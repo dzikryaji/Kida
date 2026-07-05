@@ -5,53 +5,124 @@
 ---
 ## Present your team
 
-*[ Who are the people behind the project ]*
+We are a team of 5
+
+- Andrian
+- Erin
+- Imelda
+- Richard
+- Aji
+
+---
+
 ## Starting Assumption
 
 *What did you assume, before any real exploration (start of investigation phase)? Be honest, including if your assumption is basically a guess. Write it and move on.*
-Example:
-We think we'll end up using:
-[your guess here]
-Because:
-[your reason, even if it's thin, e.g. "it sounded like the obvious fit"]
+
+**We think we'll end up using:**
+
+1. **A vision framework for object detection & segmentation** to detect and segment objects in the camera/scene.
+2. **A vision-language model (VLM) framework** to determine the context of a detected object, in order to choose a "personality" for it.
+3. **An AR kit (e.g. ARKit) to render eyes on the object** animating the eyes to express emotion tied to that object's assigned personality.
+4. **A foundation model (LLM) for user object interaction** so the object can hold a conversation with the user, supporting both text and text-to-speech (TTS).
+5. **AVSpeechSynthesizer for Text to Speech** so the object can interact with the user by the speech (talking).
+
+<!-- Because:
+[your reason, even if it's thin, e.g. "it sounded like the obvious fit"] -->
 
 ---
 ## The Exploration Log
 
 *Not your conclusion, your actual process. Update this as you go, it doesn't need to be written in one sitting.*
-Example:<br/>What we browsed, and what surprised us:
-[ ]
-What we actually built or tested in code (not just read about):
-[ ]
-What we discovered that we didn't expect:
-[ ]
+
+**What we browsed, and what surprised us:**
+
+- We found that foundation models can identify an object and infer some context around it, this was promising going in.
+- ⁠Basic Vision object detection was okay, but not enough for placing eyes and mouth nicely.
+- ⁠Bounding boxes help, but they feel too rough for a living object
+- Segmentation is more useful than only detection because we need to know the object shape.
+- ⁠Apple has Core ML SAM2 models on Hugging Face, and that was a better direction for tap-to-segment.
+- ⁠Apple built-in TTS works, but the voice quality and emotion are not strong enough for a kid character experience.
+
+**What we actually built or tested in code (not just read about):**
+
+- When we actually tested it, the foundation model could only recognize an object at a basic/general level, it struggled to pick up finer details
+- ⁠Vision / Core ML object detection using YOLO models
+- ⁠Vision foreground segmentation
+- ⁠Apple SAM2.1 Tiny Core ML segmentation
+- ⁠Hybrid segmentation: SAM2 first, Vision fallback
+- ASR using Apple Speech framework
+- ⁠TTS using AVSpeechSynthesizer first
+- ⁠ElevenLabs TTS as a better voice option
+- ⁠Mouth animation that moves while speech is active
+- ⁠Word-based mouth movement using speech timing where possible
+
+**What we discovered that we didn't expect:**
+
+- Even running on iOS 27, the foundation model's performance wasn't as strong as we expected.
+- We discovered that the main problem is not only “can the AI detect the object?”
+  The bigger problem is smoothness.
+  If segmentation is too heavy, the camera feels laggy. If TTS waits too long, the character feels dead. If the mouth does not move at the same time as speech, the illusion breaks.
+  So the app needs both AI quality and real-time performance.
+
 
 ---
 ## What We Tried and Dropped
 
-*Name at least one real alternative you seriously considered, and explain why it got cut. "We didn't consider anything else" is a sign you should go back because maybe there is something worth exploring that could perform really well with your idea.*
-Example:<br/>We considered:
-[ ]
-We dropped it because:
-[ ]
+**We considered:**
+Using only bounding box object detection.
+
+**We dropped it because:**
+Bounding boxes are not accurate enough for placing the face nicely on real-world objects. Segmentation gives a better object shape and makes the object feel more “selected.”
+
+**We also considered:**
+Only Apple AVSpeechSynthesizer for production TTS.
+
+**We dropped it as the main character voice because:**
+It works and is Apple-first, but it sounds too flat for the character feeling we want. For kids, voice personality is very important.
+
 
 ---
 ## Real Limitations Hit
 
-*What broke, what didn't behave the way the documentation said it would, where AI genuinely couldn't help you.*
-Example:<br/>[ Describe the situation ]
-How we worked around it (or how it changed our use case / mechanic):
-[ Describe what you did ]
+### Vision / Segmentation limitation
+
+Vision segmentation was fast but not always accurate. Sometimes it selected the wrong part or the mask was not clean.
+
+**How we worked around it:**
+We added Apple Core ML SAM2.1 Tiny. Now the user taps the object, and SAM2 tries to segment that selected object. If SAM2 fails, the app falls back to Vision segmentation.
+
+### Performance limitation
+
+SAM-style segmentation is heavier than normal Vision. It can make the app feel laggy if we run it too often.
+
+**How we worked around it:**
+We made segmentation tap-based, not continuous. We also prewarm the model, cache the segmentation, cancel old segmentation tasks, and use CPU / Neural Engine so AR rendering has more room.
+
+### ASR limitation
+
+Apple Speech can crash or behave badly if permissions, audio session, or threading are not handled carefully.
+
+**How we worked around it:**
+We treated ASR as a controlled mode: start listening, update transcript, stop listening, then send the final question. We also stop TTS before listening so the app does not listen to itself.
+
+### TTS limitation
+
+Apple TTS is reliable but not expressive enough for our character voice goal.
+
+**How we worked around it:**
+We still keep AVSpeechSynthesizer as the Apple fallback, but for better character voice we explored ElevenLabs. The app can choose different voices based on the scanned object.
+
 
 ---
 ## The Revised Decision
 
-*Your final framework/feature combination. Go back and look at Section 1, what changed, and why? If nothing changed, explain why your first instinct held up.*
-Example:
-Final decision:
-[ ]
-What changed since Section 1, and why:
-[ ]
+- **Vision / Core ML:** object detection and fallback segmentation
+- **Apple Core ML SAM2.1 Tiny:** tap-to-segment object mask
+- **Apple Speech framework:** ASR
+- **ElevenLabs TTS:** better expressive character voice
+- **AVSpeechSynthesizer:** fallback TTS
+
 
 ---
 ## App Track Addendum
