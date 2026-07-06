@@ -28,7 +28,11 @@ enum AppTab: String, CaseIterable {
 
 struct ContentView: View {
     @State private var selection: AppTab = .collection
-    @State private var isScanMode: Bool = false
+    @StateObject private var scanViewModel = ScanViewModel()
+
+    private var isFullScreenMode: Bool {
+        scanViewModel.isScanning || scanViewModel.placedAnchor != nil
+    }
 
     var body: some View {
         TabView(selection: $selection) {
@@ -37,9 +41,9 @@ struct ContentView: View {
                 systemImage: AppTab.scan.icon,
                 value: .scan
             ) {
-                ScanView(isScanMode: $isScanMode)
+                ScanView(scanViewModel: scanViewModel)
                     // hide the tab bar only while Scan is selected
-                    .toolbar(isScanMode ? .hidden : .visible, for: .tabBar)
+                    .toolbar(isFullScreenMode ? .hidden : .visible, for: .tabBar)
             }
 
             Tab(
@@ -50,7 +54,12 @@ struct ContentView: View {
                 CollectionView()
             }
         }
-        .animation(.easeInOut(duration: 0.3), value: isScanMode)
+        // The actual driver of the animation is `withAnimation` wrapping the
+        // `isScanning` / `placedAnchor` mutations inside ScanViewModel — that's
+        // the single source of truth both this view and ScanView read from.
+        // This modifier just makes sure the tab-bar visibility toggle (the one
+        // piece of UI ContentView itself owns) animates in step with that.
+        .animation(.easeInOut(duration: 0.3), value: isFullScreenMode)
     }
 }
 
