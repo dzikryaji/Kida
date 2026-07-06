@@ -7,13 +7,13 @@
 	objects = {
 
 /* Begin PBXFileReference section */
-		64B4D3AD2FF4A0480014695E /* kida.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = kida.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		64B4D3AD2FF4A0480014695E /* Kida.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Kida.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		64B4D3AF2FF4A0480014695E /* kida */ = {
+		64B4D3AF2FF4A0480014695E /* Kida */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = kida;
+			path = Kida;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -32,7 +32,7 @@
 		64B4D3A42FF4A0480014695E = {
 			isa = PBXGroup;
 			children = (
-				64B4D3AF2FF4A0480014695E /* kida */,
+				64B4D3AF2FF4A0480014695E /* Kida */,
 				64B4D3AE2FF4A0480014695E /* Products */,
 			);
 			sourceTree = "<group>";
@@ -40,7 +40,7 @@
 		64B4D3AE2FF4A0480014695E /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				64B4D3AD2FF4A0480014695E /* kida.app */,
+				64B4D3AD2FF4A0480014695E /* Kida.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -48,9 +48,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		64B4D3AC2FF4A0480014695E /* kida */ = {
+		64B4D3AC2FF4A0480014695E /* Kida */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 64B4D3B82FF4A0490014695E /* Build configuration list for PBXNativeTarget "kida" */;
+			buildConfigurationList = 64B4D3B82FF4A0490014695E /* Build configuration list for PBXNativeTarget "Kida" */;
 			buildPhases = (
 				64B4D3A92FF4A0480014695E /* Sources */,
 				64B4D3AA2FF4A0480014695E /* Frameworks */,
@@ -61,13 +61,13 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				64B4D3AF2FF4A0480014695E /* kida */,
+				64B4D3AF2FF4A0480014695E /* Kida */,
 			);
-			name = kida;
+			name = Kida;
 			packageProductDependencies = (
 			);
 			productName = kida;
-			productReference = 64B4D3AD2FF4A0480014695E /* kida.app */;
+			productReference = 64B4D3AD2FF4A0480014695E /* Kida.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -85,7 +85,7 @@
 					};
 				};
 			};
-			buildConfigurationList = 64B4D3A82FF4A0480014695E /* Build configuration list for PBXProject "kida" */;
+			buildConfigurationList = 64B4D3A82FF4A0480014695E /* Build configuration list for PBXProject "Kida" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -99,7 +99,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				64B4D3AC2FF4A0480014695E /* kida */,
+				64B4D3AC2FF4A0480014695E /* Kida */,
 			);
 		};
 /* End PBXProject section */
@@ -315,7 +315,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		64B4D3A82FF4A0480014695E /* Build configuration list for PBXProject "kida" */ = {
+		64B4D3A82FF4A0480014695E /* Build configuration list for PBXProject "Kida" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				64B4D3B62FF4A0490014695E /* Debug */,
@@ -324,7 +324,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		64B4D3B82FF4A0490014695E /* Build configuration list for PBXNativeTarget "kida" */ = {
+		64B4D3B82FF4A0490014695E /* Build configuration list for PBXNativeTarget "Kida" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				64B4D3B92FF4A0490014695E /* Debug */,

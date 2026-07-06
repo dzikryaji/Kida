@@ -8,7 +8,7 @@
 import SwiftUI
 
 @main
-struct kidaApp: App {
+struct KidaApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
