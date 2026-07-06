@@ -9,11 +9,12 @@ import SwiftUI
 
 struct ScanView: View {
     @Binding var isScanMode: Bool
+    let scanChat: ScanChatModel
 
     var body: some View {
         NavigationStack {
             ZStack {
-                CameraView(isScanMode: $isScanMode)
+                CameraView(isScanMode: $isScanMode, scanChat: scanChat)
                     .cornerRadius(isScanMode ? 0 : 34)
                     .padding(.horizontal, isScanMode ? 0 : 16)
                     .padding(.vertical, isScanMode ? 0 : 10)
@@ -27,7 +28,7 @@ struct ScanView: View {
     struct PreviewWrapper: View {
         @State var isScanMode = false
         var body: some View {
-            ScanView(isScanMode: $isScanMode)
+            ScanView(isScanMode: $isScanMode, scanChat: ScanChatModel())
         }
     }
     return PreviewWrapper()
@@ -37,16 +38,29 @@ struct CameraView: View {
     @Binding var isScanMode: Bool
     @State private var showSaveConfirmation = false
     @State private var showCloseConfirmation = false
+    @Bindable var scanChat: ScanChatModel
+
+    private var overlaysBlocked: Bool {
+        showSaveConfirmation || showCloseConfirmation
+    }
 
     var body: some View {
         ZStack {
-            ARViewContainer()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .onTapGesture {
+            ARViewContainer(
+                onARViewReady: { scanChat.arView = $0 },
+                onTap: { point in
+                    // Single tap path (UIKit recognizer). SwiftUI .onTapGesture
+                    // can't be used here: it loses to the UIKit recognizer and
+                    // never fires.
+                    guard !overlaysBlocked else { return }
                     if !isScanMode {
-                        isScanMode = true
+                        isScanMode = true          // first tap: go fullscreen
+                    } else {
+                        scanChat.handleTap(at: point)  // in scan mode: scan object
                     }
                 }
+            )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .toolbar {
                     if isScanMode {
                         ToolbarItem(placement: .topBarLeading) {
@@ -76,14 +90,54 @@ struct CameraView: View {
                     }
                 }
 
+            // Hint while live and waiting for a tap.
+            if isScanMode, scanChat.isModelReady, scanChat.phase == .idle,
+               !overlaysBlocked {
+                VStack {
+                    Spacer()
+                    Text("Tap an object to meet it!")
+                        .font(.callout.weight(.semibold))
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 10)
+                        .background(.thinMaterial, in: Capsule())
+                        .padding(.bottom, 24)
+                }
+            }
+
+            // Identifying the tapped object.
+            if isScanMode, scanChat.phase == .scanning {
+                VStack(spacing: 10) {
+                    ProgressView().tint(.white)
+                    Text("Meeting your new friend…")
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(.white)
+                }
+                .padding(20)
+                .background(.black.opacity(0.5), in: RoundedRectangle(cornerRadius: 20))
+            }
+
+            // Live chat overlay (PRD §4b) once the object is identified.
+            if isScanMode, scanChat.phase == .chatting, !overlaysBlocked {
+                ChatOverlay(
+                    messages: scanChat.vlm.messages,
+                    isThinking: scanChat.vlm.isThinking,
+                    draft: $scanChat.draft,
+                    onSend: scanChat.send
+                )
+            }
+
+            // Model loading now happens at app launch (ContentView gate), so no
+            // loading card here — by the time the camera shows, the VLM is ready.
+
             if showSaveConfirmation && !showCloseConfirmation {
                 SaveConfirmationOverlay(
-                    itemName: "Mug",
+                    itemName: scanChat.scannedObject?.objectName ?? "Friend",
                     itemImage: Image(systemName: "cup.and.saucer.fill"),
                     onYes: {
                         showSaveConfirmation = false
                         isScanMode = false
                         // taruh logic save disini
+                        scanChat.reset()
                     },
                     onNotNow: {
                         showSaveConfirmation = false
@@ -93,11 +147,11 @@ struct CameraView: View {
 
             if !showSaveConfirmation && showCloseConfirmation {
                 CloseConfirmationOverlay(
-                    itemName: "Mug",
+                    itemName: scanChat.scannedObject?.objectName ?? "Your friend",
                     onYes: {
                         showCloseConfirmation = false
                         isScanMode = false
-                        // taruh logic save disini
+                        scanChat.reset()
                     },
                     onNotNow: {
                         showCloseConfirmation = false
@@ -110,6 +164,7 @@ struct CameraView: View {
             .spring(response: 0.35, dampingFraction: 0.85),
             value: showSaveConfirmation
         )
+        .animation(.easeInOut(duration: 0.25), value: scanChat.phase)
     }
 }
 

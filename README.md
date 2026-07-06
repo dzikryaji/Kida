@@ -17,23 +17,19 @@ We are a team of 5
 
 ## Starting Assumption
 
-*What did you assume, before any real exploration (start of investigation phase)? Be honest, including if your assumption is basically a guess. Write it and move on.*
 
 **We think we'll end up using:**
 
 1. **A vision framework for object detection & segmentation** to detect and segment objects in the camera/scene.
-2. **A vision-language model (VLM) framework** to determine the context of a detected object, in order to choose a "personality" for it.
 3. **An AR kit (e.g. ARKit) to render eyes on the object** animating the eyes to express emotion tied to that object's assigned personality.
 4. **A foundation model (LLM) for user object interaction** so the object can hold a conversation with the user, supporting both text and text-to-speech (TTS).
+4. **Apple Speech framework for Automatic Speech Recognition** for speech to text.
 5. **AVSpeechSynthesizer for Text to Speech** so the object can interact with the user by the speech (talking).
 
-<!-- Because:
-[your reason, even if it's thin, e.g. "it sounded like the obvious fit"] -->
 
 ---
 ## The Exploration Log
 
-*Not your conclusion, your actual process. Update this as you go, it doesn't need to be written in one sitting.*
 
 **What we browsed, and what surprised us:**
 
@@ -48,6 +44,7 @@ We are a team of 5
 
 - When we actually tested it, the foundation model could only recognize an object at a basic/general level, it struggled to pick up finer details
 - ⁠Vision / Core ML object detection using YOLO models
+- SmolVLM on VLM model that apple provide works better than foundation model
 - ⁠Vision foreground segmentation
 - ⁠Apple SAM2.1 Tiny Core ML segmentation
 - ⁠Hybrid segmentation: SAM2 first, Vision fallback
@@ -92,6 +89,7 @@ Vision segmentation was fast but not always accurate. Sometimes it selected the 
 **How we worked around it:**
 We added Apple Core ML SAM2.1 Tiny. Now the user taps the object, and SAM2 tries to segment that selected object. If SAM2 fails, the app falls back to Vision segmentation.
 
+
 ### Performance limitation
 
 SAM-style segmentation is heavier than normal Vision. It can make the app feel laggy if we run it too often.
@@ -110,8 +108,16 @@ We treated ASR as a controlled mode: start listening, update transcript, stop li
 
 Apple TTS is reliable but not expressive enough for our character voice goal.
 
+
 **How we worked around it:**
 We still keep AVSpeechSynthesizer as the Apple fallback, but for better character voice we explored ElevenLabs. The app can choose different voices based on the scanned object.
+
+
+### Vision Language Model limitation
+
+SmolVLM gave us accurate results, but the model is heavy for an on-device chatbot: around 1 GB, which is a lot to ship inside a native app.
+
+**How we worked around it:**
 
 
 ---
@@ -119,9 +125,11 @@ We still keep AVSpeechSynthesizer as the Apple fallback, but for better characte
 
 - **Vision / Core ML:** object detection and fallback segmentation
 - **Apple Core ML SAM2.1 Tiny:** tap-to-segment object mask
+- **VLM (Vision-Language Model):** object context and chatbot interaction
 - **Apple Speech framework:** ASR
 - **ElevenLabs TTS:** better expressive character voice
 - **AVSpeechSynthesizer:** fallback TTS
+
 
 
 ---
