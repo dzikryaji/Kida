@@ -8,38 +8,41 @@
 import SwiftUI
 
 struct ScanView: View {
-    @Binding var isScanMode: Bool
+    @ObservedObject var scanViewModel: ScanViewModel
+
     @State private var showSaveConfirmation = false
     @State private var showCloseConfirmation = false
     @State private var messageText = ""
+
     @FocusState private var isTyping: Bool
+
+    var isFullScreenMode: Bool {
+        scanViewModel.isScanning || scanViewModel.placedAnchor != nil
+    }
 
     var body: some View {
         NavigationStack {
             ZStack {
                 GeometryReader { geo in
-                    ARViewContainer()
+                    ARViewContainer(scanViewModel: scanViewModel)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .onTapGesture {
-                            if !isScanMode {
-                                withAnimation(.easeInOut(duration: 0.35)) {
-                                    isScanMode = true
-                                }
-                            }
-
-                        }
-                        .cornerRadius(isScanMode ? 0 : 34)
-                        .padding(.horizontal, isScanMode ? 0 : 16)
+                        .cornerRadius(isFullScreenMode ? 0 : 34)
+                        .padding(.horizontal, isFullScreenMode ? 0 : 16)
                         .padding(
                             .top,
-                            isScanMode ? 0 : geo.safeAreaInsets.top + 64
+                            isFullScreenMode ? 0 : geo.safeAreaInsets.top + 64
                         )
                         .padding(
                             .bottom,
-                            isScanMode ? 0 : geo.safeAreaInsets.bottom + 100
+                            isFullScreenMode ? 0 : geo.safeAreaInsets.bottom + 100
                         )
                 }
                 .ignoresSafeArea(.all)
+                // Local animation binding: this is the view that actually redraws
+                // (frame/cornerRadius/padding) when isFullScreenMode flips, so it
+                // needs its own .animation(value:) rather than relying on a
+                // modifier attached higher up in ContentView.
+                .animation(.easeInOut(duration: 0.3), value: isFullScreenMode)
 
                 if showSaveConfirmation && !showCloseConfirmation {
                     SaveConfirmationOverlay(
@@ -51,10 +54,8 @@ struct ScanView: View {
                             ) {
                                 showSaveConfirmation = false
                             }
-                            withAnimation(.easeInOut(duration: 0.35)) {
-                                isScanMode = false
-                            }
-                            // taruh logic save disini
+
+                            scanViewModel.removePlacedObject()
                         },
                         onNotNow: {
                             withAnimation(
@@ -76,10 +77,8 @@ struct ScanView: View {
                             ) {
                                 showCloseConfirmation = false
                             }
-                            withAnimation(.easeInOut(duration: 0.35)) {
-                                isScanMode = false
-                            }
-                            // taruh logic save disini
+
+                            scanViewModel.removePlacedObject()
                         },
                         onNotNow: {
                             withAnimation(
@@ -92,7 +91,7 @@ struct ScanView: View {
                     .transition(.opacity.combined(with: .scale(scale: 0.9)))
                 }
 
-                if isScanMode {
+                if isFullScreenMode {
                     VStack {
                         Spacer()
 
@@ -140,9 +139,14 @@ struct ScanView: View {
                     }
                     .transition(.opacity)
                 }
+
+                if scanViewModel.isScanning {
+                    ScanningOverlay()
+                        .transition(.opacity)
+                }
             }
             .toolbar {
-                if isScanMode {
+                if isFullScreenMode {
                     ToolbarItem(placement: .topBarLeading) {
                         Button(action: {
                             withAnimation(
@@ -175,41 +179,53 @@ struct ScanView: View {
                             showCloseConfirmation || showSaveConfirmation
                         )
                     }
-
-                    //                    ToolbarItem(placement: .bottomBar) {
-                    //                        TextField("Text me", text: $messageText)
-                    //                            .focused($isTyping)
-                    //                            .textFieldStyle(.plain)
-                    //                            .background(Color.clear)
-                    //                            .padding(.horizontal, 10)
-                    //                            .onChange(of: isTyping) { newValue in
-                    //                                print("isTyping berubah jadi: \(newValue)")
-                    //                            }
-                    //                    }
-                    //
-                    //                    ToolbarItem(placement: .bottomBar) {
-                    //                        Button {
-                    //                            // action
-                    //                        } label: {
-                    //                            Image(systemName: "microphone.fill")
-                    //                        }
-                    //                        .opacity(isTyping ? 0 : 1)
-                    //                        .disabled(isTyping)
-                    //                        .allowsHitTesting(!isTyping)
-                    //                        .animation(.easeInOut(duration: 0.2), value: isTyping)
-                    //                    }
                 }
 
             }
         }
     }
 }
+
+// NOTE on the Preview crash:
+// ARKit (ARWorldTrackingConfiguration / session.run) cannot run in Xcode
+// Previews or the Simulator — there's no real camera or motion hardware.
+// If ARViewContainer unconditionally starts a session in makeUIView, the
+// preview process will crash or hang. Guard it, e.g. inside
+// ARViewContainer.makeUIView:
+//
+//     #if targetEnvironment(simulator)
+//     // return a placeholder UIView / skip session.run entirely
+//     #else
+//     guard ARWorldTrackingConfiguration.isSupported else {
+//         // show a fallback, don't call session.run
+//         return arView
+//     }
+//     arView.session.run(ARWorldTrackingConfiguration())
+//     #endif
+//
+// Previews should ideally use a mock ScanViewModel/ARViewContainer rather
+// than the real AR-backed one. A real device build is otherwise required
+// to exercise ScanView.
 #Preview {
-    struct PreviewWrapper: View {
-        @State var isScanMode = false
-        var body: some View {
-            ScanView(isScanMode: $isScanMode)
+    let viewModel = ScanViewModel()
+
+    ScanView(scanViewModel: viewModel)
+}
+
+
+struct ScanningOverlay: View {
+    @State private var animate = false
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.55)
+                .ignoresSafeArea()
         }
+        .onAppear {
+            withAnimation(.linear(duration: 1.1).repeatForever(autoreverses: false)) {
+                animate = true
+            }
+        }
+        .allowsHitTesting(false)
     }
-    return PreviewWrapper()
 }
