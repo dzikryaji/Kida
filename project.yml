@@ -1,0 +1,50 @@
+name: Kida
+options:
+  bundleIdPrefix: com.andrian
+  deploymentTarget:
+    iOS: "18.0"
+settings:
+  base:
+    CURRENT_PROJECT_VERSION: 1
+    MARKETING_VERSION: 1.0
+    SWIFT_VERSION: 6.0
+targets:
+  Kida:
+    type: application
+    platform: iOS
+    configFiles:
+      Debug: Supporting/Secrets.xcconfig
+      Release: Supporting/Secrets.xcconfig
+    sources:
+      - path: App
+      - path: AR
+      - path: Models
+      - path: Services
+    info:
+      path: Supporting/Info.plist
+      properties:
+        NSCameraUsageDescription: Kida uses the camera to recognize nearby objects and place a playful animated face on them.
+        NSMicrophoneUsageDescription: Kida uses the microphone so a child can ask the animated object a question.
+        NSSpeechRecognitionUsageDescription: Kida uses speech recognition to turn a spoken question into text before the object answers.
+        ElevenLabsAPIKey: $(ELEVENLABS_API_KEY)
+        ElevenLabsVoiceID: $(ELEVENLABS_VOICE_ID)
+        ElevenLabsCheerfulVoiceID: $(ELEVENLABS_CHEERFUL_VOICE_ID)
+        ElevenLabsGentleVoiceID: $(ELEVENLABS_GENTLE_VOICE_ID)
+        ElevenLabsWiseVoiceID: $(ELEVENLABS_WISE_VOICE_ID)
+        ElevenLabsEnergeticVoiceID: $(ELEVENLABS_ENERGETIC_VOICE_ID)
+        ElevenLabsCalmVoiceID: $(ELEVENLABS_CALM_VOICE_ID)
+        ElevenLabsModelID: $(ELEVENLABS_MODEL_ID)
+        UIRequiresFullScreen: true
+        UIApplicationSupportsIndirectInputEvents: true
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.andrian.kida
+        PRODUCT_NAME: Kida
+        DEVELOPMENT_TEAM: NA9CXGVRMK
+        CODE_SIGN_STYLE: Automatic
+        TARGETED_DEVICE_FAMILY: "1,2"
+        INFOPLIST_FILE: Supporting/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
