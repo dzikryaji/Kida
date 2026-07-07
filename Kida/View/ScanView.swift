@@ -183,29 +183,14 @@ struct ScanView: View {
 
             }
         }
+        // Load the SAM models as soon as the scan screen appears so the
+        // first tap doesn't pay that startup cost.
+        .task {
+            await scanViewModel.warmUpSAM()
+        }
     }
 }
 
-// NOTE on the Preview crash:
-// ARKit (ARWorldTrackingConfiguration / session.run) cannot run in Xcode
-// Previews or the Simulator — there's no real camera or motion hardware.
-// If ARViewContainer unconditionally starts a session in makeUIView, the
-// preview process will crash or hang. Guard it, e.g. inside
-// ARViewContainer.makeUIView:
-//
-//     #if targetEnvironment(simulator)
-//     // return a placeholder UIView / skip session.run entirely
-//     #else
-//     guard ARWorldTrackingConfiguration.isSupported else {
-//         // show a fallback, don't call session.run
-//         return arView
-//     }
-//     arView.session.run(ARWorldTrackingConfiguration())
-//     #endif
-//
-// Previews should ideally use a mock ScanViewModel/ARViewContainer rather
-// than the real AR-backed one. A real device build is otherwise required
-// to exercise ScanView.
 #Preview {
     let viewModel = ScanViewModel()
 
@@ -213,6 +198,9 @@ struct ScanView: View {
 }
 
 
+/// Shown while `ScanViewModel` is running SAM segmentation on the tapped
+/// object. Its visible duration is whatever segmentation actually takes -
+/// there's no fixed timer behind it anymore.
 struct ScanningOverlay: View {
     @State private var animate = false
 
