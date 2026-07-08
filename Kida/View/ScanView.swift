@@ -183,11 +183,6 @@ struct ScanView: View {
 
             }
         }
-        // Load the SAM models as soon as the scan screen appears so the
-        // first tap doesn't pay that startup cost.
-        .task {
-            await scanViewModel.warmUpSAM()
-        }
     }
 }
 
