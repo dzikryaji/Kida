@@ -15,7 +15,10 @@ import ARKit
 import RealityKit
 import Combine
 import CoreVideo
+import CoreImage
+import UIKit
 
+@MainActor
 class ScanViewModel: ObservableObject {
 
     @Published private(set) var placedAnchor: AnchorEntity?
@@ -25,6 +28,15 @@ class ScanViewModel: ObservableObject {
 
     private let placementService: ARPlacementServicing
     private let segmenter: ObjectSegmenting
+
+    // --- AI: persona (VLM + personality) + chat (Foundation Model) + voice (ElevenLabs) ---
+    private let personaGenerator: PersonaGenerating = FoundationPersonaGenerator()
+    private let understanding: VisualUnderstandingProviding = CascadingVisualUnderstandingProvider()
+    private let voice = ObjectVoice()
+    @Published private(set) var persona: ObjectPersona?
+    @Published private(set) var isReplying = false
+    private var history: [ChatMessage] = []
+    private var capturedImage: UIImage?
 
     private weak var currentFace: Entity?
     private weak var currentBubble: Entity?
@@ -64,6 +76,7 @@ class ScanViewModel: ObservableObject {
         guard placedAnchor == nil, !isScanning else { return }
 
         isScanning = true
+        capturedImage = Self.image(from: pixelBuffer)
 
         let normalizedTap = SAMAnchorMath.normalizedTargetPoint(
             tapInView: point,
@@ -134,6 +147,9 @@ class ScanViewModel: ObservableObject {
             to: anchor,
             afterDelay: faceAnimationDuration + bubbleAppearDelayAfterFace
         )
+
+        // VLM understands the object → persona (personality + emotion) → greeting + voice.
+        Task { await self.createPersona(from: self.capturedImage) }
     }
 
     func removePlacedObject() {
@@ -251,5 +267,68 @@ class ScanViewModel: ObservableObject {
             guard let self, let anchor else { return }
             self.addBubble(labeled: newLabel, to: anchor, afterDelay: 0)
         }
+    }
+
+    // MARK: - AI persona + chat
+
+    /// After placement: VLM understands the object → persona (personality + emotion) → apply the
+    /// face personality, resting expression, greeting bubble, and spoken greeting. Falls back to a
+    /// label-based persona when no VLM/Gemini is configured yet.
+    private func createPersona(from image: UIImage?) async {
+        var detected = DetectedObject(
+            label: "object", confidence: 0.5, capturedImage: image,
+            boundingBox: nil, segmentation: nil, alternatives: [], visualContext: nil
+        )
+        var facts: RetrievedObjectFacts?
+        if image != nil, let result = try? await understanding.makeObjectUnderstanding(for: detected) {
+            detected.objectIntelligence = result.objectIntelligence
+            detected.label = result.objectIntelligence.primaryLabel
+            facts = result.retrievedFacts
+        }
+        var built = await personaGenerator.makePersona(for: detected)
+        built.retrievedFacts = facts
+        applyPersona(built)
+    }
+
+    private func applyPersona(_ persona: ObjectPersona) {
+        self.persona = persona
+        history = []
+        changePersonality(to: persona.personalityKind.faceKind)
+        changeExpression(to: persona.emotionStyle.faceExpression)
+        setBubbleText(persona.greeting)
+        Task { await self.voice.speak(persona.greeting, emotion: persona.emotionStyle, objectLabel: persona.objectLabel) }
+    }
+
+    /// Child sends a message → Foundation Model reply → bubble text + face expression + voice.
+    func sendMessage(_ text: String) {
+        let message = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !message.isEmpty, let persona, !isReplying else { return }
+        isReplying = true
+        history.append(ChatMessage(role: .child, text: message, emotion: nil))
+        Task {
+            let reply = await self.personaGenerator.makeResponse(for: message, persona: persona, history: self.history)
+            self.history.append(ChatMessage(role: .object, text: reply.text, emotion: reply.emotion))
+            self.setBubbleText(reply.text)
+            self.changeExpression(to: reply.emotion.faceExpression)
+            self.isReplying = false
+            await self.voice.speak(reply.text, emotion: reply.emotion, objectLabel: persona.objectLabel)
+        }
+    }
+
+    /// Replaces the current bubble with a specific string (vs the hardcoded cycle).
+    func setBubbleText(_ text: String) {
+        guard let anchor = placedAnchor else { return }
+        removeBubbleAnimated { [weak self, weak anchor] in
+            guard let self, let anchor else { return }
+            self.addBubble(labeled: text, to: anchor, afterDelay: 0)
+        }
+    }
+
+    private static func image(from pixelBuffer: CVPixelBuffer) -> UIImage? {
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        let context = CIContext()
+        guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return nil }
+        // Camera buffer in a portrait app is .right-oriented; the AI's JPEG encoder bakes it upright.
+        return UIImage(cgImage: cgImage, scale: 1, orientation: .right)
     }
 }

@@ -20,6 +20,18 @@ struct ScanView: View {
         scanViewModel.isScanning || scanViewModel.placedAnchor != nil
     }
 
+    private var canSend: Bool {
+        !messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Sends the typed message to the AI (reply → bubble + expression + voice) and clears the field.
+    private func send() {
+        guard canSend else { return }
+        scanViewModel.sendMessage(messageText)
+        messageText = ""
+        isTyping = false
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -99,6 +111,8 @@ struct ScanView: View {
                             TextField("Text me", text: $messageText)
                                 .focused($isTyping)
                                 .textFieldStyle(.plain)
+                                .submitLabel(.send)
+                                .onSubmit { send() }
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 10)
                                 .glassEffect(
@@ -107,26 +121,28 @@ struct ScanView: View {
                                 )
 
                             Button {
-                                // action
-                                if isTyping {
+                                if canSend {
+                                    send()
+                                } else if isTyping {
                                     isTyping.toggle()
                                 }
                             } label: {
-                                if isTyping {
+                                if canSend {
+                                    Image(systemName: "arrow.up")
+                                        .font(.system(size: 16, weight: .bold))
+                                        .frame(width: 36, height: 36)
+                                } else if isTyping {
                                     Image(systemName: "xmark")
-                                        .font(
-                                            .system(size: 16, weight: .medium)
-                                        )
+                                        .font(.system(size: 16, weight: .medium))
                                         .frame(width: 36, height: 36)
                                 } else {
                                     Image(systemName: "microphone.fill")
-                                        .font(
-                                            .system(size: 16, weight: .medium)
-                                        )
+                                        .font(.system(size: 16, weight: .medium))
                                         .frame(width: 36, height: 36)
                                 }
                             }
                             .foregroundStyle(Color(.systemGray))
+                            .disabled(scanViewModel.isReplying)
                             .padding(2)
                             .transition(.scale.combined(with: .opacity))
                             .glassEffect(.regular.interactive(), in: .capsule)

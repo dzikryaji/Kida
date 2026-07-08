@@ -128,3 +128,38 @@ enum PersonalityMapper {
     }
     #endif
 }
+
+// MARK: - Bridge to the AR layer (friend's FaceEntityFactory)
+
+extension PersonalityKind {
+    /// Maps to the AR face personality. 1:1 except `.sweet` → `.caregiver`.
+    var faceKind: FaceEntityFactory.Personality {
+        switch self {
+        case .boss: return .boss
+        case .cool: return .cool
+        case .fancy: return .fancy
+        case .sweet: return .caregiver
+        case .cautious: return .cautious
+        }
+    }
+}
+
+extension Emotion {
+    /// Collapses the 9 emotions to the AR face's 3 expressions.
+    var faceExpression: FaceEntityFactory.Expression {
+        switch self {
+        case .angry: return .angry
+        case .sad: return .sad
+        default: return .happy
+        }
+    }
+
+    /// ElevenLabs voice bucket (happy / angry / sad).
+    var voiceKey: String {
+        switch self {
+        case .angry: return "angry"
+        case .sad: return "sad"
+        default: return "happy"
+        }
+    }
+}
