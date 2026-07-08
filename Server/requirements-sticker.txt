@@ -1,0 +1,8 @@
+# Optional "sticker" tier for the Kida Mac server (BiRefNet background removal).
+# The base server (kida_vlm_server.py) runs without these; install only to enable
+# the /object/sticker endpoint.
+#
+#   pip install -r Server/requirements-sticker.txt
+#
+rembg>=2.0.60
+onnxruntime>=1.17

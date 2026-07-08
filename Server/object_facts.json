@@ -1,0 +1,203 @@
+[
+  {
+    "label": "bottle",
+    "aliases": ["water bottle", "flask", "container"],
+    "facts": [
+      "Bottles hold liquids so people can carry drinks.",
+      "A cap or lid helps stop spills.",
+      "Bottles can be made from plastic, glass, or metal.",
+      "Reusable bottles can reduce trash."
+    ],
+    "safetyNotes": [
+      "Do not suggest drinking unknown liquids.",
+      "Suggest asking an adult before opening sealed containers."
+    ],
+    "suggestedQuestions": [
+      "Why do you have a cap?",
+      "What are you made of?",
+      "How do you stop spills?"
+    ]
+  },
+  {
+    "label": "cup",
+    "aliases": ["mug", "teacup", "glass"],
+    "facts": [
+      "Cups hold drinks and make sipping easier.",
+      "A handle can protect fingers from warm drinks.",
+      "Wide cups are easier to tip than bottles.",
+      "Cups can be ceramic, plastic, glass, paper, or metal."
+    ],
+    "safetyNotes": [
+      "Do not suggest touching hot drinks.",
+      "Mention adult help for broken glass or sharp ceramic pieces."
+    ],
+    "suggestedQuestions": [
+      "Why do cups have handles?",
+      "What can cups be made from?",
+      "Why can cups spill?"
+    ]
+  },
+  {
+    "label": "book",
+    "aliases": ["notebook", "binder", "comic book"],
+    "facts": [
+      "Books store stories, pictures, and ideas on pages.",
+      "Pages are usually read in order so the idea can grow step by step.",
+      "A cover helps protect pages.",
+      "Books can teach facts or tell imaginary stories."
+    ],
+    "safetyNotes": [
+      "Encourage gentle page turning instead of tearing pages."
+    ],
+    "suggestedQuestions": [
+      "Why do you have pages?",
+      "What does your cover do?",
+      "How do books tell stories?"
+    ]
+  },
+  {
+    "label": "plant",
+    "aliases": ["potted plant", "houseplant", "flower"],
+    "facts": [
+      "Many plants use sunlight to make food.",
+      "Roots help plants drink water from soil.",
+      "Leaves help plants breathe and catch light.",
+      "Plants grow slowly with light, water, air, and care."
+    ],
+    "safetyNotes": [
+      "Do not suggest eating leaves or berries.",
+      "Suggest asking an adult before watering or touching unknown plants."
+    ],
+    "suggestedQuestions": [
+      "Why do plants need sunlight?",
+      "What do roots do?",
+      "How do leaves help you?"
+    ]
+  },
+  {
+    "label": "chair",
+    "aliases": ["seat", "stool"],
+    "facts": [
+      "Chairs support people while they sit.",
+      "Chair legs spread weight down to the floor.",
+      "A backrest helps people lean and rest.",
+      "Some chairs roll, fold, spin, or rock."
+    ],
+    "safetyNotes": [
+      "Do not suggest climbing or standing on chairs."
+    ],
+    "suggestedQuestions": [
+      "Why do chairs have legs?",
+      "What does a backrest do?",
+      "How do you hold people up?"
+    ]
+  },
+  {
+    "label": "toy",
+    "aliases": ["doll", "figurine", "plush", "teddy"],
+    "facts": [
+      "Toys help kids imagine, practice, and tell stories.",
+      "Different toy shapes can teach colors, balance, and movement.",
+      "Soft toys are often made with fabric and stuffing.",
+      "Building toys can help people learn patterns."
+    ],
+    "safetyNotes": [
+      "Mention adult help if a toy has tiny parts or batteries."
+    ],
+    "suggestedQuestions": [
+      "How do toys help imagination?",
+      "What are soft toys made from?",
+      "Why do toys have different shapes?"
+    ]
+  },
+  {
+    "label": "bag",
+    "aliases": ["backpack", "handbag", "purse"],
+    "facts": [
+      "Bags carry objects from one place to another.",
+      "Straps help spread weight across hands, shoulders, or backs.",
+      "Pockets keep small items easier to find.",
+      "Bags can be made from fabric, leather, paper, or plastic."
+    ],
+    "safetyNotes": [
+      "Do not suggest looking inside someone else's bag without permission."
+    ],
+    "suggestedQuestions": [
+      "Why do bags have straps?",
+      "What do pockets do?",
+      "What can bags be made from?"
+    ]
+  },
+  {
+    "label": "phone",
+    "aliases": ["smartphone", "mobile phone"],
+    "facts": [
+      "Phones can send messages, make calls, and show pictures.",
+      "A touchscreen senses taps from fingers.",
+      "Phones use batteries, tiny chips, speakers, cameras, and antennas.",
+      "Apps are small programs that help a phone do jobs."
+    ],
+    "safetyNotes": [
+      "Remind children to ask an adult before calling, sharing photos, or opening apps."
+    ],
+    "suggestedQuestions": [
+      "How does a touchscreen work?",
+      "Why do phones need batteries?",
+      "What do apps do?"
+    ]
+  },
+  {
+    "label": "laptop",
+    "aliases": ["computer", "notebook computer"],
+    "facts": [
+      "Laptops are portable computers with screens and keyboards.",
+      "Computers follow instructions called programs.",
+      "A keyboard helps people write letters and commands.",
+      "Laptops use batteries so they can work away from a wall plug."
+    ],
+    "safetyNotes": [
+      "Suggest adult help before changing settings or sharing information online."
+    ],
+    "suggestedQuestions": [
+      "How does a computer follow instructions?",
+      "Why do laptops have keyboards?",
+      "Why do laptops need batteries?"
+    ]
+  },
+  {
+    "label": "pen",
+    "aliases": ["pencil", "marker"],
+    "facts": [
+      "Pens and pencils make marks so people can write or draw.",
+      "Ink pens use liquid color that flows to a tiny tip.",
+      "Pencils use graphite, which can be erased from paper.",
+      "Markers often make wider, brighter lines."
+    ],
+    "safetyNotes": [
+      "Do not suggest drawing on skin, walls, screens, or furniture."
+    ],
+    "suggestedQuestions": [
+      "How does ink come out?",
+      "Why can pencils be erased?",
+      "What makes markers bright?"
+    ]
+  },
+  {
+    "label": "table",
+    "aliases": ["desk"],
+    "facts": [
+      "Tables hold objects at a useful height.",
+      "A flat top gives people a place to work, eat, draw, or build.",
+      "Table legs carry weight down to the floor.",
+      "Desks are tables often used for reading, writing, or computers."
+    ],
+    "safetyNotes": [
+      "Do not suggest climbing or sitting on tables."
+    ],
+    "suggestedQuestions": [
+      "Why do tables have flat tops?",
+      "How do table legs hold things up?",
+      "What is a desk for?"
+    ]
+  }
+]

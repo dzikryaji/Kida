@@ -1,0 +1,20 @@
+# Secrets — NEVER commit (contains API keys)
+Secrets.xcconfig
+
+# Xcode user state
+*.xcuserstate
+xcuserdata/
+
+# Python envs / caches
+.venv/
+.venv-fastvlm/
+__pycache__/
+
+# Server model/artifact downloads (pulled at runtime, not committed)
+Server/mlx_models/
+Server/.cache/
+Server/fastvlm-0.5b/
+Server/fastvlm-*/
+
+# macOS
+.DS_Store
