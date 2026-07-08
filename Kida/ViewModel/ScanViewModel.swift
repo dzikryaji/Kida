@@ -139,17 +139,9 @@ class ScanViewModel: ObservableObject {
         let anchor = placementService.placeAnchor(at: placement, in: arView)
         placedAnchor = anchor
 
-        await addFace(personality: currentPersonality, to: anchor, animated: true)
-
-        textBubbleIndex = 0
-        addBubble(
-            labeled: textBubbles[textBubbleIndex],
-            to: anchor,
-            afterDelay: faceAnimationDuration + bubbleAppearDelayAfterFace
-        )
-
-        // VLM understands the object → persona (personality + emotion) → greeting + voice.
-        Task { await self.createPersona(from: self.capturedImage) }
+        // Decide the personality (VLM) FIRST, then build the face exactly once. Swapping the
+        // personality after the face was already placed rebuilt it and stacked duplicate eyes.
+        await setUpPersonaAndFace(on: anchor)
     }
 
     func removePlacedObject() {
@@ -274,7 +266,29 @@ class ScanViewModel: ObservableObject {
     /// After placement: VLM understands the object → persona (personality + emotion) → apply the
     /// face personality, resting expression, greeting bubble, and spoken greeting. Falls back to a
     /// label-based persona when no VLM/Gemini is configured yet.
-    private func createPersona(from image: UIImage?) async {
+    /// After placement: VLM → persona → build the face ONCE with the right personality +
+    /// resting expression, then show + speak the greeting. Building the face after the
+    /// personality is known (rather than swapping it afterward) avoids the duplicate-face/eyes
+    /// bug from tearing down and rebuilding an already-placed face.
+    private func setUpPersonaAndFace(on anchor: AnchorEntity) async {
+        let persona = await buildPersona(from: capturedImage)
+        guard anchor === placedAnchor else { return }
+        self.persona = persona
+        history = []
+        currentPersonality = persona.personalityKind.faceKind
+        currentExpression = persona.emotionStyle.faceExpression
+        await addFace(personality: currentPersonality, to: anchor, animated: true)
+        addBubble(
+            labeled: persona.greeting,
+            to: anchor,
+            afterDelay: faceAnimationDuration + bubbleAppearDelayAfterFace
+        )
+        Task { await self.voice.speak(persona.greeting, emotion: persona.emotionStyle, objectLabel: persona.objectLabel) }
+    }
+
+    /// VLM/Gemini understands the object → persona (personality + emotion). Falls back to a
+    /// label-based persona when no VLM is configured.
+    private func buildPersona(from image: UIImage?) async -> ObjectPersona {
         var detected = DetectedObject(
             label: "object", confidence: 0.5, capturedImage: image,
             boundingBox: nil, segmentation: nil, alternatives: [], visualContext: nil
@@ -287,16 +301,7 @@ class ScanViewModel: ObservableObject {
         }
         var built = await personaGenerator.makePersona(for: detected)
         built.retrievedFacts = facts
-        applyPersona(built)
-    }
-
-    private func applyPersona(_ persona: ObjectPersona) {
-        self.persona = persona
-        history = []
-        changePersonality(to: persona.personalityKind.faceKind)
-        changeExpression(to: persona.emotionStyle.faceExpression)
-        setBubbleText(persona.greeting)
-        Task { await self.voice.speak(persona.greeting, emotion: persona.emotionStyle, objectLabel: persona.objectLabel) }
+        return built
     }
 
     /// Child sends a message → Foundation Model reply → bubble text + face expression + voice.
