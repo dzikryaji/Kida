@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 @main
 struct KidaApp: App {
@@ -14,5 +15,6 @@ struct KidaApp: App {
             ContentView()
                 .preferredColorScheme(.light)
         }
+        .modelContainer(for: ScannedItem.self)
     }
 }
