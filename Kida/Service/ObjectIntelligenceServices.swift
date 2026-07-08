@@ -94,6 +94,7 @@ struct MacVLMVisualUnderstandingProvider: VisualUnderstandingProviding {
         request.httpMethod = "POST"
         request.timeoutInterval = configuration.timeout
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("true", forHTTPHeaderField: "ngrok-skip-browser-warning") // free-ngrok: get JSON, not the warning page
 
         if let token = configuration.token {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")

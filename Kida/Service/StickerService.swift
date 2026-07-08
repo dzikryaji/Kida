@@ -61,6 +61,7 @@ struct RemoteStickerProvider {
         request.httpMethod = "POST"
         request.timeoutInterval = max(configuration.timeout, 30)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("true", forHTTPHeaderField: "ngrok-skip-browser-warning") // free-ngrok: get PNG, not the warning page
         if let token = configuration.token {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
