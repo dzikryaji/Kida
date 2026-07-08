@@ -21,7 +21,7 @@ struct RootView: View {
         case .splash:
             SplashScreen()
                 .task {
-                    try? await Task.sleep(for: .seconds(0.5))   // splash show 2 sec
+                    try? await Task.sleep(for: .seconds(2))   // splash show 2 sec
                     withAnimation { stage = .onboarding }
                 }
         case .onboarding:

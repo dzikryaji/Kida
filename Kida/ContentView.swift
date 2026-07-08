@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 enum AppTab: String, CaseIterable {
     case scan
@@ -67,4 +68,5 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
+            .modelContainer(for: ScannedItem.self, inMemory: true)
 }

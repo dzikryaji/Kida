@@ -7,15 +7,29 @@
 import SwiftUI
 
 struct CollectionCard: View {
-    let title: String
-    let date: String
-    let imageName: String
+    let item: ScannedItem
+    // Pixels resolved by caller (CollectionViewModel.imageData) —
+    // model only stores a filename.
+    let image: UIImage?
     
     var body: some View {
         ZStack(alignment: .bottomLeading) {
-            Image(imageName)
-                .resizable()
-                .scaledToFill()
+            Group {
+                            if let image {
+                                Image(uiImage: image)
+                                    .resizable()
+                                    .scaledToFill()
+                            } else {
+                                // placeholder when no photo on disk
+                                Color(red: 0.98, green: 0.95, blue: 0.87)
+                                    .overlay(
+                                        Image(systemName: "photo")
+                                            .font(.largeTitle)
+                                            .foregroundStyle(.gray.opacity(0.5))
+                                    )
+                            }
+                        }
+                
                 .frame(width: 170, height: 190)
                 .clipped()
             
@@ -29,11 +43,11 @@ struct CollectionCard: View {
             .frame(height: 180)
             
             VStack(alignment: .leading) {
-                Text(title)
+                Text(item.objectName)
                     .font(.system(size: 14, weight: .bold))
                     .foregroundColor(.black)
-                
-                Text(date)
+
+                Text(item.date.formatted(date: .long, time: .omitted))
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(.black.opacity(0.8))
             }
@@ -49,8 +63,7 @@ struct CollectionCard: View {
 
 #Preview {
     CollectionCard(
-        title: "MUG",
-        date: "July 02, 2026",
-        imageName: "mug2"
+        item: ScannedItem(itemDescription: "test", objectName: "MUG"),
+        image: UIImage(named: "mug2")
     )
 }

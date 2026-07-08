@@ -10,10 +10,10 @@ import SwiftUI
 struct CollectionDetail: View {
     @Environment(\.dismiss) private var dismiss
 
-    let title: String
-    let date: String
-    let imageName: String
-    let summary: String
+    let item: ScannedItem
+    // Pixels resolved by caller (CollectionViewModel.imageData) —
+    // model only stores a filename.
+    let image: UIImage?
 
     var body: some View {
         ScrollView {
@@ -30,21 +30,32 @@ struct CollectionDetail: View {
                         .shadow(color: .black.opacity(0.08), radius: 10, y: 3)
                 }
 
-                Image(imageName)
-                    .resizable()
-                    .scaledToFill()
+                Group {
+                    if let image {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                    } else {
+                        Color(red: 0.98, green: 0.95, blue: 0.87)
+                            .overlay(
+                                Image(systemName: "photo")
+                                    .font(.largeTitle)
+                                    .foregroundStyle(.gray.opacity(0.5))
+                            )
+                    }
+                }
                     .frame(height: 360)
                     .frame(maxWidth: .infinity)
                     .clipShape(RoundedRectangle(cornerRadius: 28))
                     .shadow(color: .black.opacity(0.15), radius: 15, y: 8)
 
-                Text(title)
+                Text(item.objectName)
                     .font(.system(size: 34))
                     .fontWeight(.bold)
 
                 HStack(spacing: 6) {
                     Image(systemName: "calendar")
-                    Text(date)
+                    Text(item.date.formatted(date: .long, time: .shortened))
                         .font(.system(size: 14))
                 }
 
@@ -53,7 +64,7 @@ struct CollectionDetail: View {
                     .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(Color(red: 0.31, green: 0.25, blue: 0.85))
 
-                Text(summary)
+                Text(item.itemDescription)
                     .padding()
                     .font(.system(size: 14, weight: .semibold))
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -73,9 +84,10 @@ struct CollectionDetail: View {
 
 #Preview {
     CollectionDetail(
-        title: "Mug",
-        date: "July 02, 2026 • 10:42 AM",
-        imageName: "mug2",
-        summary: "\"Hi! I'm Mug. I'm here to make your drinks extra special. Every morning, you fill me up with something warm, and together we start the day. I love when you take a break with me and enjoy your favorite drink.\""
+        item: ScannedItem(
+            itemDescription: "\"Hi! I'm Mug. I'm here to make your drinks extra special. Every morning, you fill me up with something warm, and together we start the day. I love when you take a break with me and enjoy your favorite drink.\"",
+            objectName: "Mug"
+        ),
+        image: UIImage(named: "mug2")
     )
 }
