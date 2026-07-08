@@ -281,12 +281,21 @@ struct GeminiVisualUnderstandingProvider: VisualUnderstandingProviding {
           "readableText": ["short visible words or letters"],
           "likelyUses": ["safe everyday use"],
           "safetyNotes": ["child-safety caveat if relevant"],
-          "uncertainty": "low, medium, or high"
+          "uncertainty": "low, medium, or high",
+          "personality": "one of: boss, cool, fancy, sweet, cautious",
+          "emotion": "one of: neutral, happy, curious, surprised, thinking, excited"
         }
 
         Use simple object labels such as bottle, cup, book, plant, toy, chair, table, bag, phone, laptop, pen, or object.
         Do not guess brand names. Do not identify people. Do not claim invisible details.
         For confidence, use 0.0 to 1.0.
+        Choose personality by what the object is:
+        - boss: money, keys, remote, book, calculator, phone, laptop (status / control)
+        - cool: ball, skateboard, headphones, sneakers, bike (sport / play / style)
+        - fancy: perfume, jewelry, trophy, wine glass, vase (formal / elegant / special)
+        - sweet: plush toy, pillow, blanket, teapot, flower (soft / comfort / care)
+        - cautious: anything sharp, hot, electrical, or medicine (dangerous — needs an adult)
+        Choose emotion as the friendly mood that suits the object.
         Keep arrays short: at most 4 items each.
         """
     }

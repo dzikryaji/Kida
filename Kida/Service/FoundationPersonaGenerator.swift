@@ -15,6 +15,21 @@ final class FoundationPersonaGenerator: PersonaGenerating {
     private let decoder = JSONDecoder()
 
     func makePersona(for detectedObject: DetectedObject) async -> ObjectPersona {
+        var persona = await generatePersona(for: detectedObject)
+        // Personality: honor the VLM's pick, else map from the label — but ALWAYS force
+        // .cautious for dangerous objects (safety > flavor). Emotion: the VLM's, else the kind's.
+        let card = detectedObject.objectIntelligence
+        let kind = PersonalityMapper.resolve(
+            suggested: card?.personality,
+            label: detectedObject.label,
+            safetyNotes: card?.safetyNotes ?? []
+        )
+        persona.personalityKind = kind
+        persona.emotionStyle = card?.emotion ?? kind.defaultEmotion
+        return persona
+    }
+
+    private func generatePersona(for detectedObject: DetectedObject) async -> ObjectPersona {
         #if canImport(FoundationModels)
         if #available(iOS 26.0, *) {
             do {
@@ -82,6 +97,7 @@ final class FoundationPersonaGenerator: PersonaGenerating {
                 let grounding = Self.groundingBlock(for: persona)
                 let prompt = """
                 You are \(persona.name), a friendly talking \(persona.objectLabel). Personality: \(persona.personality).
+                Speak in this voice — \(persona.personalityKind.voice).
 
                 OBJECT CARD + FACTS — this is EVERYTHING you truthfully know. Do not go beyond it:
                 \(grounding)
