@@ -13,6 +13,8 @@ struct ScanView: View {
     @State private var showSaveConfirmation = false
     @State private var showCloseConfirmation = false
     @State private var messageText = ""
+    @State private var isListening = false
+    @State private var speech = SpeechRecognitionService()
 
     @FocusState private var isTyping: Bool
 
@@ -24,12 +26,32 @@ struct ScanView: View {
         !messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    /// Sends the typed message to the AI (reply → bubble + expression + voice) and clears the field.
-    private func send() {
-        guard canSend else { return }
-        scanViewModel.sendMessage(messageText)
+    /// Sends `text` to the AI (reply → bubble + expression + voice) and clears the field.
+    private func sendText(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        scanViewModel.sendMessage(trimmed)
         messageText = ""
         isTyping = false
+    }
+
+    private func send() { sendText(messageText) }
+
+    /// Mic → live speech-to-text into the field; the final transcript auto-sends.
+    private func startListening() {
+        isTyping = false
+        messageText = ""
+        isListening = true
+        speech.startListening(
+            onTranscript: { messageText = $0 },
+            onFinish: { final in isListening = false; sendText(final) },
+            onError: { _ in isListening = false }
+        )
+    }
+
+    private func stopListening() {
+        speech.stopListening(sendFinalTranscript: true)
+        isListening = false
     }
 
     var body: some View {
@@ -121,13 +143,21 @@ struct ScanView: View {
                                 )
 
                             Button {
-                                if canSend {
+                                if isListening {
+                                    stopListening()
+                                } else if canSend {
                                     send()
                                 } else if isTyping {
                                     isTyping.toggle()
+                                } else {
+                                    startListening()
                                 }
                             } label: {
-                                if canSend {
+                                if isListening {
+                                    Image(systemName: "stop.fill")
+                                        .font(.system(size: 16, weight: .bold))
+                                        .frame(width: 36, height: 36)
+                                } else if canSend {
                                     Image(systemName: "arrow.up")
                                         .font(.system(size: 16, weight: .bold))
                                         .frame(width: 36, height: 36)
@@ -141,7 +171,7 @@ struct ScanView: View {
                                         .frame(width: 36, height: 36)
                                 }
                             }
-                            .foregroundStyle(Color(.systemGray))
+                            .foregroundStyle(isListening ? Color.red : Color(.systemGray))
                             .disabled(scanViewModel.isReplying)
                             .padding(2)
                             .transition(.scale.combined(with: .opacity))
