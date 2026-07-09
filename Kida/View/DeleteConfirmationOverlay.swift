@@ -14,12 +14,10 @@ struct DeleteConfirmationOverlay: View {
 
     var body: some View {
         ZStack {
-            // Dim background
             Color.black.opacity(0.4)
                 .ignoresSafeArea()
 
             VStack(spacing: 24) {
-
                 Text("Are you sure want to\ndelete \(itemName)?")
                     .font(.title2.bold())
                     .foregroundStyle(.white)
@@ -66,15 +64,11 @@ struct DeleteConfirmationOverlay: View {
                 .frame(width: 65, height: 75)
                 .padding(20)
                 .offset(y: -135)
-                .foregroundColor(Color.white)
+                .foregroundStyle(.white)
         }
     }
 }
 
 #Preview {
-    DeleteConfirmationOverlay(
-        itemName: "Mug",
-        onDelete: {},
-        onCancel: {}
-    )
+    DeleteConfirmationOverlay(itemName: "Mug", onDelete: {}, onCancel: {})
 }

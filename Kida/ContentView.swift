@@ -62,11 +62,11 @@ struct ContentView: View {
         // the single source of truth both this view and ScanView read from.
         // This modifier just makes sure the tab-bar visibility toggle (the one
         // piece of UI ContentView itself owns) animates in step with that.
-//        .animation(.easeInOut(duration: 0.3), value: isFullScreenMode)
+        .animation(.easeInOut(duration: 0.3), value: isFullScreenMode)
     }
 }
 
 #Preview {
     ContentView()
-            .modelContainer(for: ScannedItem.self, inMemory: true)
+        .modelContainer(for: ScannedItem.self, inMemory: true)
 }

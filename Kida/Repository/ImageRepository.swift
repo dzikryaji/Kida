@@ -4,19 +4,10 @@
 //
 //  Created by Dzikry Aji Santoso on 08/07/26.
 //
-//  REPOSITORY LAYER — image file persistence
-//
-//  Protocol + concrete implementation for saving/loading/deleting image
-//  files on disk. Defined as a protocol (not just static functions) so it
-//  can be injected into ScannedItemRepository and swapped for a mock/fake
-//  in tests or SwiftUI previews.
-//
 
 import Foundation
 
 final class ImageRepository {
-
-    /// Directory where all scanned images live: .../Documents/ScannedImages/
     private var imagesDirectory: URL {
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let folder = documents.appendingPathComponent("ScannedImages", isDirectory: true)
@@ -24,6 +15,7 @@ final class ImageRepository {
         if !FileManager.default.fileExists(atPath: folder.path) {
             try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         }
+
         return folder
     }
 
@@ -35,7 +27,7 @@ final class ImageRepository {
             try data.write(to: url, options: .atomic)
             return filename
         } catch {
-            print("FileSystemImageRepository: failed to save image — \(error)")
+            print("ImageRepository failed to save image: \(error)")
             return nil
         }
     }
@@ -53,7 +45,7 @@ final class ImageRepository {
     }
 
     func replace(oldFilename: String?, with newData: Data?) -> String? {
-        guard let newData else { return oldFilename } // nothing new captured, keep existing
+        guard let newData else { return oldFilename }
         delete(oldFilename)
         return save(newData)
     }

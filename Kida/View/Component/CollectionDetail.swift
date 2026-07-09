@@ -11,8 +11,6 @@ struct CollectionDetail: View {
     @Environment(\.dismiss) private var dismiss
 
     let item: ScannedItem
-    // Pixels resolved by caller (CollectionViewModel.imageData) —
-    // model only stores a filename.
     let image: UIImage?
 
     var body: some View {
@@ -44,21 +42,19 @@ struct CollectionDetail: View {
                             )
                     }
                 }
-                    .frame(height: 360)
-                    .frame(maxWidth: .infinity)
-                    .clipShape(RoundedRectangle(cornerRadius: 28))
-                    .shadow(color: .black.opacity(0.15), radius: 15, y: 8)
+                .frame(height: 360)
+                .frame(maxWidth: .infinity)
+                .clipShape(RoundedRectangle(cornerRadius: 28))
+                .shadow(color: .black.opacity(0.15), radius: 15, y: 8)
 
                 Text(item.objectName)
-                    .font(.system(size: 34))
-                    .fontWeight(.bold)
+                    .font(.system(size: 34, weight: .bold))
 
                 HStack(spacing: 6) {
                     Image(systemName: "calendar")
                     Text(item.date.formatted(date: .long, time: .shortened))
                         .font(.system(size: 14))
                 }
-
 
                 Text("Summary")
                     .font(.system(size: 16, weight: .bold))
@@ -72,10 +68,9 @@ struct CollectionDetail: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12))
             }
             .padding(.horizontal, 24)
-               .padding(.top, 20)
-               .padding(.bottom, 40)
+            .padding(.top, 20)
+            .padding(.bottom, 40)
         }
-        .scrollDisabled(true)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(red: 0.93, green: 0.92, blue: 0.98).ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
@@ -85,9 +80,9 @@ struct CollectionDetail: View {
 #Preview {
     CollectionDetail(
         item: ScannedItem(
-            itemDescription: "\"Hi! I'm Mug. I'm here to make your drinks extra special. Every morning, you fill me up with something warm, and together we start the day. I love when you take a break with me and enjoy your favorite drink.\"",
+            itemDescription: "Hi! I'm Mug. I'm here to make your drinks extra special.",
             objectName: "Mug"
         ),
-        image: UIImage(named: "mug2")
+        image: nil
     )
 }

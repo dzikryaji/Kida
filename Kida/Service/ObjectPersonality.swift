@@ -1,0 +1,216 @@
+import Foundation
+
+/// Kida's five starter personalities. A scanned object is assigned the closest one:
+/// the **AR layer** renders `accessory` as a 3D prop on the face, the **AI layer** makes
+/// the Foundation Model speak in `voice`. A starting taxonomy, not rigid rules.
+///
+/// Source of truth = the scanned object. VLM/Gemini may suggest a flavor, but strong
+/// object taxonomy and safety overrides keep the AR accessory stable and varied.
+enum PersonalityKind: String, Codable, CaseIterable, Sendable {
+    case boss        // round glasses — authority / money / "holds power"
+    case cool        // sunglasses — sport / play / trendy
+    case fancy       // bow tie — formal / elegant / special-occasion
+    case sweet       // hair bow — soft / comfort / care
+    case cautious    // small helmet — dangerous objects: careful, never scary
+
+    var title: String {
+        switch self {
+        case .boss: return "The Boss"
+        case .cool: return "The Cool"
+        case .fancy: return "The Fancy"
+        case .sweet: return "The Sweet"
+        case .cautious: return "The Careful"
+        }
+    }
+
+    /// Identifier for the 3D accessory the AR layer places on the face.
+    /// (AR side must have a model registered under each of these names.)
+    var accessory: String {
+        switch self {
+        case .boss: return "round_glasses"
+        case .cool: return "sunglasses"
+        case .fancy: return "bow_tie"
+        case .sweet: return "hair_bow"
+        case .cautious: return "helmet"
+        }
+    }
+
+    /// In-character voice the Foundation Model adopts. Warm + kid-safe for every kind.
+    var voice: String {
+        switch self {
+        case .boss: return "confident and in charge, like a friendly little leader — warm, never bossy or mean"
+        case .cool: return "playful, sporty and upbeat, like a fun best friend"
+        case .fancy: return "polished and gentle, delighted by pretty and special things"
+        case .sweet: return "soft, warm and caring, like a cozy friend who gives comfort"
+        case .cautious: return "calm and careful — gently reminds the child to stay safe and ask a grown-up; reassuring, never scary"
+        }
+    }
+
+    /// Resting face emotion for the character.
+    var defaultEmotion: Emotion {
+        switch self {
+        case .boss: return .happy
+        case .cool: return .happy
+        case .fancy: return .happy
+        case .sweet: return .happy
+        case .cautious: return .angry
+        }
+    }
+
+    /// Stable voice family chosen at scan time. Swift maps gender + emotion to concrete IDs;
+    /// family keeps the character direction consistent without exposing provider voice IDs.
+    var defaultVoiceFamily: VoiceFamily {
+        switch self {
+        case .boss: return .confident
+        case .cool: return .bright
+        case .fancy: return .gentle
+        case .sweet: return .gentle
+        case .cautious: return .careful
+        }
+    }
+}
+
+/// Assigns a personality from the object, and enforces the safety override.
+enum PersonalityMapper {
+    /// Final personality for an object. `suggested` is the VLM/Gemini pick (nil if none).
+    /// SAFETY FIRST: a dangerous object is always `.cautious`, whatever the VLM said.
+    static func resolve(
+        suggested: PersonalityKind?,
+        label: String,
+        safetyNotes: [String] = []
+    ) -> PersonalityKind {
+        if isDangerous(label: label, safetyNotes: safetyNotes) { return .cautious }
+        if let mapped = explicitMapFromLabel(label) { return mapped }
+        return suggested ?? .cool
+    }
+
+    /// Keyword fallback when the VLM didn't classify (deterministic, per the design doc).
+    static func mapFromLabel(_ label: String) -> PersonalityKind {
+        if let mapped = explicitMapFromLabel(label) { return mapped }
+        return .cool   // friendly, low-stakes default
+    }
+
+    /// Strong taxonomy hits override the VLM when it lazily returns `.cool`.
+    /// Unknown/ambiguous labels still let the VLM suggestion win.
+    static func explicitMapFromLabel(_ label: String) -> PersonalityKind? {
+        let text = label.lowercased()
+        if contains(text, bossWords) { return .boss }
+        if contains(text, coolWords) { return .cool }
+        if contains(text, sweetWords) { return .sweet }
+        if contains(text, fancyWords) { return .fancy }
+        return nil
+    }
+
+    /// Danger drives both `.cautious` and the kid-safety guardrail. Over-triggering is the
+    /// SAFE failure mode (an over-careful teddy is harmless; a careless knife is not), so the
+    /// list is deliberately broad and the VLM's own safetyNotes are also consulted.
+    static func isDangerous(label: String, safetyNotes: [String] = []) -> Bool {
+        let text = (label + " " + safetyNotes.joined(separator: " ")).lowercased()
+        return contains(text, dangerWords)
+    }
+
+    private static func contains(_ text: String, _ terms: [String]) -> Bool {
+        let words = Set(text.split { !$0.isLetter && !$0.isNumber }.map(String.init))
+        return terms.contains { rawTerm in
+            let term = rawTerm.lowercased()
+            if term.contains(" ") {
+                return text.contains(term)
+            }
+            return wordVariants(for: term).contains { words.contains($0) }
+        }
+    }
+
+    private static func wordVariants(for term: String) -> [String] {
+        var variants = [term, "\(term)s"]
+        if term.hasSuffix("s") || term.hasSuffix("x") || term.hasSuffix("ch") {
+            variants.append("\(term)es")
+        }
+        if term == "knife" {
+            variants.append("knives")
+        }
+        return variants
+    }
+
+    static let dangerWords = [
+        "knife", "scissor", "blade", "razor", "stove", "oven", "heater", "outlet",
+        "socket", "plug", "cord", "battery", "lighter", "match", "candle", "flame",
+        "medicine", "pill", "syringe", "needle", "chemical", "cleaner", "bleach", "sharp",
+    ]
+    static let coolWords = [
+        "ball", "skateboard", "sneaker", "shoe", "headphone", "earbud", "sunglass",
+        "bicycle", "bike", "scooter", "controller", "sport", "guitar", "cap",
+        "game", "toy car", "frisbee",
+    ]
+    static let sweetWords = [
+        "pillow", "blanket", "plush", "stuffed", "teddy", "doll", "toy", "teapot",
+        "tissue", "tissue box", "cushion", "mug", "flower", "bear", "bunny", "baby",
+        "baby bottle", "soft",
+    ]
+    static let fancyWords = [
+        "perfume", "wine", "champagne", "vase", "frame", "jewel", "ring", "necklace",
+        "crystal", "trophy", "medal", "bow tie", "watch", "photo", "glassware",
+        "tableware", "decorative",
+    ]
+    static let bossWords = [
+        "money", "cash", "wallet", "credit card", "coin", "safe", "piggy", "remote",
+        "key", "calculator", "book", "clock", "phone", "laptop", "computer", "tablet",
+        "badge", "card",
+    ]
+
+    #if DEBUG
+    /// ponytail: one runnable check for the mapper. Call from a test or SwiftUI preview.
+    static func _selfCheck() {
+        assert(resolve(suggested: .sweet, label: "medicine bottle") == .cautious, "danger must override")
+        assert(resolve(suggested: nil, label: "kitchen knife") == .cautious)
+        assert(resolve(suggested: nil, label: "skateboard") == .cool)
+        assert(resolve(suggested: nil, label: "teddy bear") == .sweet)
+        assert(resolve(suggested: nil, label: "wine glass") == .fancy)
+        assert(resolve(suggested: nil, label: "wallet") == .boss)
+        assert(resolve(suggested: .cool, label: "laptop") == .boss, "strong taxonomy beats lazy VLM")
+        assert(resolve(suggested: .boss, label: "banana") == .boss, "VLM pick honored when safe")
+    }
+    #endif
+}
+
+// MARK: - Bridge to the AR layer (friend's FaceEntityFactory)
+
+extension PersonalityKind {
+    /// Maps to the AR face personality. 1:1 except `.sweet` → `.caregiver`.
+    var faceKind: FaceEntityFactory.Personality {
+        switch self {
+        case .boss: return .boss
+        case .cool: return .cool
+        case .fancy: return .fancy
+        case .sweet: return .caregiver
+        case .cautious: return .cautious
+        }
+    }
+}
+
+extension Emotion {
+    /// Collapses the 9 emotions to the AR face's 3 expressions.
+    var faceExpression: FaceEntityFactory.Expression {
+        switch self {
+        case .angry: return .angry
+        case .sad: return .sad
+        default: return .happy
+        }
+    }
+
+    /// ElevenLabs voice bucket (happy / angry / sad).
+    var voiceKey: String {
+        switch self {
+        case .angry: return "angry"
+        case .sad: return "sad"
+        default: return "happy"
+        }
+    }
+}
+
+extension VoiceGender {
+    /// Launch-stable fallback so an object keeps the same gender when VLM does not choose one.
+    static func stableDefault(for label: String) -> VoiceGender {
+        let seed = label.lowercased().unicodeScalars.reduce(0) { $0 &+ Int($1.value) }
+        return seed % 2 == 0 ? .woman : .man
+    }
+}

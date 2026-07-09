@@ -280,4 +280,3 @@ enum BubbleEntityFactory {
         }
     }
 }
-

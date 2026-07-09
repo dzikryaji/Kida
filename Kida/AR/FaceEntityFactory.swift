@@ -31,8 +31,8 @@
 //  Asset inventory (base filename, no extension, expected in the bundle):
 //    "eye"            -- a single eyeball, mirrored into a pair on demand
 //    "eyes"           -- a pre-built, already-matched eye pair
-//    "eyebrow"        -- a single eyebrow; there is no pre-built pair, so
-//                        this factory always mirrors it into one
+//    "eyebrow"        -- a single eyebrow asset from AR/Model/eyebrow.usdz;
+//                        mirrored into a pair here
 //    "mouth"          -- a single centered mouth (modeled as a frown),
 //                        used as-is for "sad" and transformed for the
 //                        other expressions
@@ -136,6 +136,14 @@ enum FaceEntityFactory {
             }
         }
 
+        var debugName: String {
+            switch self {
+            case .sad: return "sad"
+            case .happy: return "happy"
+            case .angry: return "angry"
+            }
+        }
+
         var pose: Pose {
             switch self {
             case .sad:
@@ -173,13 +181,6 @@ enum FaceEntityFactory {
     }
 
     private static var faces: [Personality: Entity] = [:]
-
-    /// The in-flight/completed base-face build, shared by
-    /// `preloadBaseFace()` and `makeFace(personality:)`. Caching the
-    /// `Task` itself (rather than a "did it start" bool + an optional
-    /// result) is what makes concurrent callers safe: whoever calls in
-    /// while a build is already running just awaits the same task
-    /// instead of racing it or reading a not-yet-populated result.
     private static var baseFaceTask: Task<Entity, Error>?
 
     /// Per-face running animation loops, keyed by the face entity's
@@ -220,16 +221,14 @@ enum FaceEntityFactory {
 
     /// Builds the shared base face (eyes + eyebrows + mouth, no
     /// accessory) if it hasn't been built yet, caching the build as a
-    /// `Task` in `baseFaceTask`. Every personality's face is cloned from
-    /// this, so the actual asset
+    /// `Task` in `baseFaceTask`.
+    /// Every personality's face is cloned from this, so the actual asset
     /// loading only ever happens once no matter how many times/which
     /// personalities `makeFace` is called with afterward.
     ///
     /// Safe to call concurrently with itself or with `makeFace` -- a
-    /// second caller arriving while a build is already in flight (e.g.
-    /// `makeFace` called right after `preloadBaseFace()` kicked off but
-    /// before it finished) awaits the *same* `Task` rather than starting
-    /// a redundant load or reading `face` before it's populated.
+    /// second caller arriving while a build is already in flight awaits
+    /// the same `Task` rather than starting a redundant load.
     @discardableResult
     private static func buildBaseFaceIfNeeded() async throws -> Entity {
         if let baseFaceTask {
@@ -247,6 +246,7 @@ enum FaceEntityFactory {
             let eyebrows = try await eyebrowsTask
             let mouth = try await mouthTask
             eyes.name = "eyes"
+            eyebrows.name = "eyebrows"
             mouth.name = "mouth"
 
             eyes.position = .zero
@@ -266,12 +266,6 @@ enum FaceEntityFactory {
         do {
             return try await task.value
         } catch {
-            // Don't let a failed build stick around as the cached
-            // result -- clear it so the *next* call (preload retry or
-            // a real makeFace call) starts a fresh attempt instead of
-            // forever re-awaiting this same failed task. Only one build
-            // is ever in flight at a time (this function is the only
-            // writer of `baseFaceTask`), so it's always safe to clear.
             baseFaceTask = nil
             throw error
         }
@@ -299,6 +293,15 @@ enum FaceEntityFactory {
 
     // MARK: - Public entry point
 
+    /// Returns only the shared face parts -- eyes, eyebrows, and mouth --
+    /// with no personality accessory. This is used for the instant scan
+    /// placement while the VLM is still deciding which prop belongs on
+    /// the object.
+    static func makeBaseFace() async throws -> Entity {
+        let baseFace = try await buildBaseFaceIfNeeded()
+        return baseFace.clone(recursive: true)
+    }
+
     /// Loads and assembles a complete face -- eyes, eyebrows, mouth, and
     /// the accessory for `personality` -- centered on its own local
     /// origin, so the caller can freely position/anchor it, same as
@@ -308,12 +311,8 @@ enum FaceEntityFactory {
     /// you want a different one.
     static func makeFace(personality: Personality) async throws -> Entity {
         // Build the base face (eyes + eyebrows + mouth) once. If
-        // `preloadBaseFace()` already ran and finished (e.g. kicked off
-        // when the view model started), `buildBaseFaceIfNeeded` sees the
-        // cached, already-completed task and returns immediately. If the
-        // preload is still running, this awaits that *same* task instead
-        // of racing it -- so `makeFace` called mid-preload waits for it
-        // rather than reading a not-yet-populated face.
+        // `preloadBaseFace()` already ran (e.g. kicked off when the view
+        // model started), this is a cache hit and returns immediately.
         let baseFace = try await buildBaseFaceIfNeeded()
 
         // Build this personality once.
@@ -518,7 +517,27 @@ enum FaceEntityFactory {
     }
 
     private static func makeEyebrowPair() async throws -> Entity {
-        try await makeMirroredPair(assetName: "eyebrow", separation: eyeSeparation, scale: assetScale)
+        let group = try await makeMirroredPair(assetName: "eyebrow", separation: eyeSeparation, scale: assetScale)
+        applyEyebrowMaterial(to: group)
+        return group
+    }
+
+    private static func applyEyebrowMaterial(to entity: Entity) {
+        let material = SimpleMaterial(
+            color: UIColor(red: 0.015, green: 0.013, blue: 0.012, alpha: 1),
+            isMetallic: false
+        )
+        applyMaterial(material, to: entity)
+    }
+
+    private static func applyMaterial(_ material: SimpleMaterial, to entity: Entity) {
+        if let modelEntity = entity as? ModelEntity {
+            modelEntity.model?.materials = [material]
+        }
+
+        for child in entity.children {
+            applyMaterial(material, to: child)
+        }
     }
 
     // MARK: - Asset loading

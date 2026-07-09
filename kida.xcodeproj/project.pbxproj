@@ -8,6 +8,7 @@
 
 /* Begin PBXFileReference section */
 		64B4D3AD2FF4A0480014695E /* Kida.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Kida.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C7443D692D2D067D6CC4F722 /* Secrets.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = Secrets.xcconfig; path = Supporting/Secrets.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -34,6 +35,7 @@
 			children = (
 				64B4D3AF2FF4A0480014695E /* Kida */,
 				64B4D3AE2FF4A0480014695E /* Products */,
+				C7443D692D2D067D6CC4F722 /* Secrets.xcconfig */,
 			);
 			sourceTree = "<group>";
 		};
@@ -64,8 +66,6 @@
 				64B4D3AF2FF4A0480014695E /* Kida */,
 			);
 			name = Kida;
-			packageProductDependencies = (
-			);
 			productName = kida;
 			productReference = 64B4D3AD2FF4A0480014695E /* Kida.app */;
 			productType = "com.apple.product-type.application";
@@ -85,7 +85,7 @@
 					};
 				};
 			};
-			buildConfigurationList = 64B4D3A82FF4A0480014695E /* Build configuration list for PBXProject "kida" */;
+			buildConfigurationList = 64B4D3A82FF4A0480014695E /* Build configuration list for PBXProject "Kida" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -248,26 +248,22 @@
 		};
 		64B4D3B92FF4A0490014695E /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = C7443D692D2D067D6CC4F722 /* Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = YG7T52597K;
+				DEVELOPMENT_TEAM = NA9CXGVRMK;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Need camera usage to detect object";
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Supporting/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.dzikryaji.imelda.kida;
+				PRODUCT_BUNDLE_IDENTIFIER = com.dzikryaji.kida;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -281,26 +277,22 @@
 		};
 		64B4D3BA2FF4A0490014695E /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = C7443D692D2D067D6CC4F722 /* Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = YG7T52597K;
+				DEVELOPMENT_TEAM = NA9CXGVRMK;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Need camera usage to detect object";
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Supporting/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.dzikryaji.imelda.kida;
+				PRODUCT_BUNDLE_IDENTIFIER = com.dzikryaji.kida;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -315,7 +307,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		64B4D3A82FF4A0480014695E /* Build configuration list for PBXProject "kida" */ = {
+		64B4D3A82FF4A0480014695E /* Build configuration list for PBXProject "Kida" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				64B4D3B62FF4A0490014695E /* Debug */,

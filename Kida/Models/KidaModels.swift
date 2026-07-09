@@ -10,6 +10,7 @@ struct DetectedObject: Identifiable, @unchecked Sendable {
     var segmentation: ObjectSegmentation?
     var alternatives: [String]
     var visualContext: String?
+    var objectIntelligence: ObjectIntelligenceCard? = nil   // AI: VLM/Gemini understanding (nil until enriched)
 //    var faceStyle: FaceVisualStyle?
 }
 

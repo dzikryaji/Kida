@@ -1,0 +1,9 @@
+# GPU sticker backend: full BiRefNet on the Apple GPU (MPS) or CUDA, ~1.4s/image.
+# Auto-detected when installed; force with KIDA_STICKER_BACKEND=torch. BiRefNet weights
+# (~1GB) are pulled from HuggingFace on first use and cached.
+torch>=2.2
+torchvision>=0.17
+transformers>=4.40
+timm>=0.9
+einops>=0.7
+kornia>=0.7

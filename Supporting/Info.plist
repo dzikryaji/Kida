@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>ElevenLabsAPIKey</key>
+	<string>$(ELEVENLABS_API_KEY)</string>
+	<key>ElevenLabsCalmVoiceID</key>
+	<string>$(ELEVENLABS_CALM_VOICE_ID)</string>
+	<key>ElevenLabsCheerfulVoiceID</key>
+	<string>$(ELEVENLABS_CHEERFUL_VOICE_ID)</string>
+	<key>ElevenLabsEnergeticVoiceID</key>
+	<string>$(ELEVENLABS_ENERGETIC_VOICE_ID)</string>
+	<key>ElevenLabsGentleVoiceID</key>
+	<string>$(ELEVENLABS_GENTLE_VOICE_ID)</string>
+	<key>ElevenLabsModelID</key>
+	<string>$(ELEVENLABS_MODEL_ID)</string>
+	<key>ElevenLabsVoiceID</key>
+	<string>$(ELEVENLABS_VOICE_ID)</string>
+	<key>ElevenLabsWiseVoiceID</key>
+	<string>$(ELEVENLABS_WISE_VOICE_ID)</string>
+	<key>GeminiAPIKey</key>
+	<string>$(GEMINI_API_KEY)</string>
+	<key>GeminiModelID</key>
+	<string>$(GEMINI_MODEL_ID)</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoadsInLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>Kida uses the camera to recognize nearby objects and place a playful animated face on them.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Kida can connect to your Mac on the local network to understand selected objects without sending images to a cloud service.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Kida uses the microphone so a child can ask the animated object a question.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Kida uses speech recognition to turn a spoken question into text before the object answers.</string>
+	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<true/>
+	<key>UILaunchScreen</key>
+	<dict/>
+	<key>UIRequiresFullScreen</key>
+	<true/>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+	<key>VLMServerTimeout</key>
+	<string>$(VLM_SERVER_TIMEOUT)</string>
+	<key>VLMServerToken</key>
+	<string>$(VLM_SERVER_TOKEN)</string>
+	<key>VLMServerURL</key>
+	<string>$(VLM_SERVER_URL)</string>
+</dict>
+</plist>
