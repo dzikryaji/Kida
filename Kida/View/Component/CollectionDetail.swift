@@ -9,9 +9,11 @@ import SwiftUI
 
 struct CollectionDetail: View {
     @Environment(\.dismiss) private var dismiss
+    @State private var stickerCoverage: CGFloat = 1.0
 
     let item: ScannedItem
-    let image: UIImage?
+    let rawImage: UIImage?
+    let stickerImage: UIImage?
 
     var body: some View {
         ScrollView {
@@ -28,23 +30,15 @@ struct CollectionDetail: View {
                         .shadow(color: .black.opacity(0.08), radius: 10, y: 3)
                 }
 
-                Group {
-                    if let image {
-                        Image(uiImage: image)
-                            .resizable()
-                            .scaledToFill()
-                    } else {
-                        Color(red: 0.98, green: 0.95, blue: 0.87)
-                            .overlay(
-                                Image(systemName: "photo")
-                                    .font(.largeTitle)
-                                    .foregroundStyle(.gray.opacity(0.5))
-                            )
-                    }
-                }
+                CollectionRevealSlider(
+                    rawImage: rawImage,
+                    stickerImage: stickerImage,
+                    stickerCoverage: $stickerCoverage,
+                    cornerRadius: 28,
+                    stickerPadding: 34
+                )
                 .frame(height: 360)
                 .frame(maxWidth: .infinity)
-                .clipShape(RoundedRectangle(cornerRadius: 28))
                 .shadow(color: .black.opacity(0.15), radius: 15, y: 8)
 
                 Text(item.objectName)
@@ -83,6 +77,7 @@ struct CollectionDetail: View {
             itemDescription: "Hi! I'm Mug. I'm here to make your drinks extra special.",
             objectName: "Mug"
         ),
-        image: nil
+        rawImage: nil,
+        stickerImage: nil
     )
 }

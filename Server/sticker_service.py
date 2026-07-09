@@ -21,16 +21,19 @@ import hashlib
 import io
 import os
 import sys
+import threading
 from collections import OrderedDict
 
 _SESSION = None        # rembg session (lazy)
 _TORCH_MODEL = None    # (model, device) for the torch-MPS backend (lazy)
 _BACKEND = None        # "torch" | "rembg", decided once
+_MODEL_LOCK = threading.RLock()
 
-# ponytail: in-memory LRU keyed on image hash; lost on restart. Add a disk cache if
+# In-memory LRU keyed on image hash; lost on restart. Add a disk cache if
 # repeat stickers need to survive restarts.
 _CACHE: "OrderedDict[str, tuple[bytes, tuple[int, int]]]" = OrderedDict()
 _CACHE_MAX = 64
+_CACHE_LOCK = threading.Lock()
 
 
 def _torch_ok() -> bool:
@@ -57,11 +60,12 @@ def available() -> bool:
 def _backend() -> str:
     """Pick the matting backend once: 'torch' (Apple GPU, best) else 'rembg' (CPU)."""
     global _BACKEND
-    if _BACKEND is None:
-        forced = os.environ.get("KIDA_STICKER_BACKEND")
-        _BACKEND = forced if forced in ("torch", "rembg") else ("torch" if _torch_ok() else "rembg")
-        print(f"sticker: backend = {_BACKEND}", file=sys.stderr)
-    return _BACKEND
+    with _MODEL_LOCK:
+        if _BACKEND is None:
+            forced = os.environ.get("KIDA_STICKER_BACKEND")
+            _BACKEND = forced if forced in ("torch", "rembg") else ("torch" if _torch_ok() else "rembg")
+            print(f"sticker: backend = {_BACKEND}", file=sys.stderr)
+        return _BACKEND
 
 
 def _session():
@@ -73,34 +77,36 @@ def _session():
     to the default provider if the requested ones fail.
     """
     global _SESSION
-    if _SESSION is None:
-        from rembg import new_session
-        model = os.environ.get("KIDA_STICKER_MODEL", "birefnet-general-lite")
-        providers = [
-            p.strip() for p in os.environ.get(
-                "KIDA_STICKER_PROVIDERS", "CPUExecutionProvider"
-            ).split(",") if p.strip()
-        ]
-        try:
-            _SESSION = new_session(model, providers=providers)
-        except Exception as error:
-            print(f"sticker: providers {providers} unavailable ({error}); using default", file=sys.stderr)
-            _SESSION = new_session(model)
-    return _SESSION
+    with _MODEL_LOCK:
+        if _SESSION is None:
+            from rembg import new_session
+            model = os.environ.get("KIDA_STICKER_MODEL", "birefnet-general-lite")
+            providers = [
+                p.strip() for p in os.environ.get(
+                    "KIDA_STICKER_PROVIDERS", "CPUExecutionProvider"
+                ).split(",") if p.strip()
+            ]
+            try:
+                _SESSION = new_session(model, providers=providers)
+            except Exception as error:
+                print(f"sticker: providers {providers} unavailable ({error}); using default", file=sys.stderr)
+                _SESSION = new_session(model)
+        return _SESSION
 
 
 def _torch_model():
     """Load full BiRefNet once, on the Apple GPU (MPS) if available. Resident (model, device)."""
     global _TORCH_MODEL
-    if _TORCH_MODEL is None:
-        import torch
-        from transformers import AutoModelForImageSegmentation
-        repo = os.environ.get("KIDA_STICKER_TORCH_MODEL", "ZhengPeng7/BiRefNet")
-        # checkpoint ships fp16 -> .float() to match the fp32 input
-        model = AutoModelForImageSegmentation.from_pretrained(repo, trust_remote_code=True).eval().float()
-        device = "mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu")
-        _TORCH_MODEL = (model.to(device), device)
-    return _TORCH_MODEL
+    with _MODEL_LOCK:
+        if _TORCH_MODEL is None:
+            import torch
+            from transformers import AutoModelForImageSegmentation
+            repo = os.environ.get("KIDA_STICKER_TORCH_MODEL", "ZhengPeng7/BiRefNet")
+            # checkpoint ships fp16 -> .float() to match the fp32 input
+            model = AutoModelForImageSegmentation.from_pretrained(repo, trust_remote_code=True).eval().float()
+            device = "mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu")
+            _TORCH_MODEL = (model.to(device), device)
+        return _TORCH_MODEL
 
 
 def _torch_matte(image):
@@ -138,11 +144,20 @@ def _cutout_rgba(image):
     return remove(image, session=_session(), post_process_mask=True).convert("RGBA")
 
 
-def warm_up() -> bool:
-    """Optionally pre-load the model at server start (warms the selected backend)."""
+def warm_up(run_inference: bool = True) -> bool:
+    """Pre-load the selected backend and optionally run one tiny inference."""
     if not available():
         return False
     _torch_model() if _backend() == "torch" else _session()
+    if run_inference:
+        from PIL import Image, ImageDraw
+
+        image = Image.new("RGB", (96, 96), (250, 248, 241))
+        draw = ImageDraw.Draw(image)
+        draw.rounded_rectangle((22, 20, 74, 76), radius=14, fill=(70, 126, 220))
+        buffer = io.BytesIO()
+        image.save(buffer, format="JPEG", quality=90)
+        make_sticker(buffer.getvalue(), max_side=128, outline=True, outline_px=3)
     return True
 
 
@@ -158,9 +173,10 @@ def make_sticker(
     outline, and tight-cropped to the object. Results are cached by image hash.
     """
     key = f"{hashlib.sha256(image_bytes).hexdigest()}:{max_side}:{outline}:{outline_px}"
-    if key in _CACHE:
-        _CACHE.move_to_end(key)
-        return _CACHE[key]
+    with _CACHE_LOCK:
+        if key in _CACHE:
+            _CACHE.move_to_end(key)
+            return _CACHE[key]
 
     from PIL import Image
 
@@ -180,9 +196,10 @@ def make_sticker(
     cutout.save(buffer, format="PNG")
 
     result = (buffer.getvalue(), cutout.size)
-    _CACHE[key] = result
-    if len(_CACHE) > _CACHE_MAX:
-        _CACHE.popitem(last=False)
+    with _CACHE_LOCK:
+        _CACHE[key] = result
+        if len(_CACHE) > _CACHE_MAX:
+            _CACHE.popitem(last=False)
     return result
 
 

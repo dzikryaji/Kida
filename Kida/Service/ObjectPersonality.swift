@@ -10,16 +10,38 @@ enum PersonalityKind: String, Codable, CaseIterable, Sendable {
     case boss        // round glasses — authority / money / "holds power"
     case cool        // sunglasses — sport / play / trendy
     case fancy       // bow tie — formal / elegant / special-occasion
-    case sweet       // hair bow — soft / comfort / care
+    case caregiver   // hair bow — soft / comfort / care
     case cautious    // small helmet — dangerous objects: careful, never scary
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let rawValue = try container.decode(String.self).trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        switch rawValue {
+        case "boss": self = .boss
+        case "cool": self = .cool
+        case "fancy": self = .fancy
+        case "caregiver", "sweet": self = .caregiver
+        case "cautious": self = .cautious
+        default:
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Unknown personality kind: \(rawValue)"
+            )
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
 
     var title: String {
         switch self {
         case .boss: return "The Boss"
         case .cool: return "The Cool"
         case .fancy: return "The Fancy"
-        case .sweet: return "The Sweet"
-        case .cautious: return "The Careful"
+        case .caregiver: return "The Caregiver"
+        case .cautious: return "The Cautious"
         }
     }
 
@@ -30,7 +52,7 @@ enum PersonalityKind: String, Codable, CaseIterable, Sendable {
         case .boss: return "round_glasses"
         case .cool: return "sunglasses"
         case .fancy: return "bow_tie"
-        case .sweet: return "hair_bow"
+        case .caregiver: return "hair_bow"
         case .cautious: return "helmet"
         }
     }
@@ -41,7 +63,7 @@ enum PersonalityKind: String, Codable, CaseIterable, Sendable {
         case .boss: return "confident and in charge, like a friendly little leader — warm, never bossy or mean"
         case .cool: return "playful, sporty and upbeat, like a fun best friend"
         case .fancy: return "polished and gentle, delighted by pretty and special things"
-        case .sweet: return "soft, warm and caring, like a cozy friend who gives comfort"
+        case .caregiver: return "soft, warm and caring, like a cozy friend who gives comfort"
         case .cautious: return "calm and careful — gently reminds the child to stay safe and ask a grown-up; reassuring, never scary"
         }
     }
@@ -52,7 +74,7 @@ enum PersonalityKind: String, Codable, CaseIterable, Sendable {
         case .boss: return .happy
         case .cool: return .happy
         case .fancy: return .happy
-        case .sweet: return .happy
+        case .caregiver: return .happy
         case .cautious: return .angry
         }
     }
@@ -64,7 +86,7 @@ enum PersonalityKind: String, Codable, CaseIterable, Sendable {
         case .boss: return .confident
         case .cool: return .bright
         case .fancy: return .gentle
-        case .sweet: return .gentle
+        case .caregiver: return .gentle
         case .cautious: return .careful
         }
     }
@@ -96,7 +118,7 @@ enum PersonalityMapper {
         let text = label.lowercased()
         if contains(text, bossWords) { return .boss }
         if contains(text, coolWords) { return .cool }
-        if contains(text, sweetWords) { return .sweet }
+        if contains(text, caregiverWords) { return .caregiver }
         if contains(text, fancyWords) { return .fancy }
         return nil
     }
@@ -135,13 +157,19 @@ enum PersonalityMapper {
         "knife", "scissor", "blade", "razor", "stove", "oven", "heater", "outlet",
         "socket", "plug", "cord", "battery", "lighter", "match", "candle", "flame",
         "medicine", "pill", "syringe", "needle", "chemical", "cleaner", "bleach", "sharp",
+        "fork", "forks", "tine", "tines", "pointy", "adult supervision",
+        "not safe for children", "not safe", "supervision", "grown up", "grown-up",
+        "hot", "boiling", "kettle", "pan", "pot", "toaster", "microwave", "iron",
+        "fire", "burn", "saw", "drill", "hammer", "screwdriver", "nail", "tool",
+        "shard", "broken glass", "glass shard", "wire", "cable", "electric", "electrical",
+        "detergent", "poison", "toxic", "spray", "aerosol",
     ]
     static let coolWords = [
         "ball", "skateboard", "sneaker", "shoe", "headphone", "earbud", "sunglass",
         "bicycle", "bike", "scooter", "controller", "sport", "guitar", "cap",
         "game", "toy car", "frisbee",
     ]
-    static let sweetWords = [
+    static let caregiverWords = [
         "pillow", "blanket", "plush", "stuffed", "teddy", "doll", "toy", "teapot",
         "tissue", "tissue box", "cushion", "mug", "flower", "bear", "bunny", "baby",
         "baby bottle", "soft",
@@ -160,10 +188,13 @@ enum PersonalityMapper {
     #if DEBUG
     /// ponytail: one runnable check for the mapper. Call from a test or SwiftUI preview.
     static func _selfCheck() {
-        assert(resolve(suggested: .sweet, label: "medicine bottle") == .cautious, "danger must override")
+        assert(resolve(suggested: .caregiver, label: "medicine bottle") == .cautious, "danger must override")
         assert(resolve(suggested: nil, label: "kitchen knife") == .cautious)
+        assert(resolve(suggested: .cool, label: "fork", safetyNotes: ["Use only with adult supervision"]) == .cautious)
+        assert(resolve(suggested: .fancy, label: "hot kettle") == .cautious)
+        assert(resolve(suggested: .cool, label: "electric drill") == .cautious)
         assert(resolve(suggested: nil, label: "skateboard") == .cool)
-        assert(resolve(suggested: nil, label: "teddy bear") == .sweet)
+        assert(resolve(suggested: nil, label: "teddy bear") == .caregiver)
         assert(resolve(suggested: nil, label: "wine glass") == .fancy)
         assert(resolve(suggested: nil, label: "wallet") == .boss)
         assert(resolve(suggested: .cool, label: "laptop") == .boss, "strong taxonomy beats lazy VLM")
@@ -175,13 +206,13 @@ enum PersonalityMapper {
 // MARK: - Bridge to the AR layer (friend's FaceEntityFactory)
 
 extension PersonalityKind {
-    /// Maps to the AR face personality. 1:1 except `.sweet` → `.caregiver`.
+    /// Maps to the AR face personality. 1:1 with the five AR personalities.
     var faceKind: FaceEntityFactory.Personality {
         switch self {
         case .boss: return .boss
         case .cool: return .cool
         case .fancy: return .fancy
-        case .sweet: return .caregiver
+        case .caregiver: return .caregiver
         case .cautious: return .cautious
         }
     }

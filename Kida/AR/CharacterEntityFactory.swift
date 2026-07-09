@@ -289,6 +289,7 @@ enum CharacterEntityFactory {
     }
 
     private static var faces: [Personality: Entity] = [:]
+    private static let accessoryEntityName = "personalityAccessory"
 
     /// The in-flight/completed base-face build, shared by
     /// `preloadBaseFace()` and `makeFace(personality:)`. Caching the
@@ -442,6 +443,7 @@ enum CharacterEntityFactory {
                 named: personality.accessoryAssetName,
                 scale: personality.accessoryScale
             )
+            accessory.name = accessoryEntityName
             accessory.position = personality.accessoryOffset
             personalityFace.addChild(accessory)
 
@@ -540,6 +542,67 @@ enum CharacterEntityFactory {
         var target = face.transform
         target.scale = SIMD3<Float>(repeating: 1)
         face.move(to: target, relativeTo: face.parent, duration: duration, timingFunction: timingFunction)
+    }
+
+    /// Makes the signature personality accessory feel like it gets "put on"
+    /// after the base face appears instead of being visible immediately.
+    static func prepareAccessoryForWearAnimation(on face: Entity, personality: Personality) {
+        guard let accessory = face.findEntity(named: accessoryEntityName) else { return }
+
+        var start = accessory.transform
+        start.translation = accessoryStartOffset(for: personality)
+        start.scale = SIMD3<Float>(repeating: 0.001)
+        accessory.transform = start
+        accessory.components.set(OpacityComponent(opacity: 0))
+    }
+
+    static func wearAccessory(
+        on face: Entity,
+        personality: Personality,
+        duration: TimeInterval = 0.42,
+        delay: TimeInterval = 0.16
+    ) {
+        guard let accessory = face.findEntity(named: accessoryEntityName) else { return }
+
+        Task { @MainActor [weak accessory] in
+            if delay > 0 {
+                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            }
+            guard let accessory else { return }
+
+            var target = accessory.transform
+            target.translation = personality.accessoryOffset
+            target.scale = SIMD3<Float>(repeating: personality.accessoryScale)
+            accessory.move(to: target, relativeTo: accessory.parent, duration: duration, timingFunction: .easeOut)
+
+            let fadeDefinition = FromToByAnimation<Float>(
+                from: 0,
+                to: 1,
+                duration: duration,
+                timing: .easeOut,
+                bindTarget: .opacity
+            )
+            if let fade = try? AnimationResource.generate(with: fadeDefinition) {
+                accessory.playAnimation(fade)
+            } else {
+                accessory.components.set(OpacityComponent(opacity: 1))
+            }
+
+            try? await Task.sleep(nanoseconds: UInt64(duration * 1_000_000_000))
+            accessory.components.set(OpacityComponent(opacity: 1))
+        }
+    }
+
+    private static func accessoryStartOffset(for personality: Personality) -> SIMD3<Float> {
+        let final = personality.accessoryOffset
+        switch personality {
+        case .boss, .cool:
+            return final + SIMD3<Float>(0, 0.035, 0.035)
+        case .fancy, .caregiver:
+            return final + SIMD3<Float>(0, -0.04, 0.035)
+        case .cautious:
+            return final + SIMD3<Float>(0, 0.055, 0.035)
+        }
     }
 
     /// Cancels any running idle/talking loop on `face` without starting

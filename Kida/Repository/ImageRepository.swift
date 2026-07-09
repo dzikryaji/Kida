@@ -20,7 +20,7 @@ final class ImageRepository {
     }
 
     func save(_ data: Data) -> String? {
-        let filename = "\(UUID().uuidString).jpg"
+        let filename = "\(UUID().uuidString).\(Self.fileExtension(for: data))"
         let url = imagesDirectory.appendingPathComponent(filename)
 
         do {
@@ -48,5 +48,19 @@ final class ImageRepository {
         guard let newData else { return oldFilename }
         delete(oldFilename)
         return save(newData)
+    }
+
+    private static func fileExtension(for data: Data) -> String {
+        let bytes = [UInt8](data.prefix(12))
+
+        if bytes.starts(with: [0x89, 0x50, 0x4E, 0x47]) {
+            return "png"
+        }
+
+        if bytes.starts(with: [0xFF, 0xD8, 0xFF]) {
+            return "jpg"
+        }
+
+        return "img"
     }
 }

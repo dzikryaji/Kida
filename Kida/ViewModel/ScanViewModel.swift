@@ -26,6 +26,7 @@ class ScanViewModel: ObservableObject {
     @Published private(set) var currentPersonality: CharacterEntityFactory.Personality = .caregiver
     @Published private(set) var currentExpression: CharacterEntityFactory.Expression = .sad
     @Published private(set) var capturedImageData: Data?
+    @Published private(set) var capturedStickerImageData: Data?
 
     private let placementService: ARPlacementServicing
     private let segmenter: ObjectSegmenting
@@ -33,12 +34,14 @@ class ScanViewModel: ObservableObject {
     // --- AI: persona (VLM + personality) + chat (Foundation Model) + voice (ElevenLabs) ---
     private let personaGenerator: PersonaGenerating = FoundationPersonaGenerator()
     private let understanding: VisualUnderstandingProviding = CascadingVisualUnderstandingProvider()
+    private let stickerService = StickerService()
     private let voice = ObjectVoice()
     @Published private(set) var persona: ObjectPersona?
     @Published private(set) var isReplying = false
     @Published private(set) var isUnderstandingObject = false
     private var history: [ChatMessage] = []
     private var capturedImage: UIImage?
+    private var capturedSegmentation: ObjectSegmentation?
 
     private weak var currentFace: Entity?
     private weak var currentBubble: Entity?
@@ -136,6 +139,8 @@ class ScanViewModel: ObservableObject {
         isScanning = true
         capturedImage = Self.image(from: pixelBuffer)
         capturedImageData = capturedImage?.jpegData(compressionQuality: 0.82)
+        capturedStickerImageData = nil
+        capturedSegmentation = nil
 
         let normalizedGuideCenter = SAMAnchorMath.normalizedTargetPoint(
             tapInView: point,
@@ -153,6 +158,7 @@ class ScanViewModel: ObservableObject {
 
             await MainActor.run {
                 guard let arView else { return }
+                self.capturedSegmentation = segmentation
 
                 // Prefer the segmented object's centroid over the raw tap
                 // point, since that's the actual object the child selected.
@@ -220,9 +226,42 @@ class ScanViewModel: ObservableObject {
         persona = nil
         history = []
         capturedImage = nil
+        capturedSegmentation = nil
         capturedImageData = nil
+        capturedStickerImageData = nil
         isReplying = false
         isUnderstandingObject = false
+    }
+
+    func makeCollectionStickerData() async -> Data? {
+        if let capturedStickerImageData {
+            return capturedStickerImageData
+        }
+
+        guard let capturedImage else {
+            AIDebugLogger.trace("Collection sticker request", "No captured image available")
+            return nil
+        }
+
+        AIDebugLogger.trace("Collection sticker request", """
+        imageAvailable=true
+        segmentationAvailable=\(capturedSegmentation != nil)
+        """)
+
+        guard let sticker = await stickerService.makeSticker(
+            from: capturedImage,
+            targetBox: capturedSegmentation?.boundingBox,
+            focusPoint: capturedSegmentation?.centroid
+        ),
+              let data = sticker.pngData()
+        else {
+            AIDebugLogger.trace("Collection sticker response", "No sticker returned; saving raw image only")
+            return nil
+        }
+
+        capturedStickerImageData = data
+        AIDebugLogger.trace("Collection sticker response", "bytes=\(data.count)")
+        return data
     }
 
     /// Swaps which personality's face is showing. If an object is already
@@ -271,6 +310,9 @@ class ScanViewModel: ObservableObject {
             }
             face.position = personality == .cautious ? [0, -0.05, 0] : .zero
             face.scale = animated ? SIMD3<Float>(repeating: 0.01) : SIMD3<Float>(repeating: 1)
+            if animated, let personality {
+                CharacterEntityFactory.prepareAccessoryForWearAnimation(on: face, personality: personality)
+            }
 
             // Guard against the object having been removed (or a newer
             // placement/personality change started) while the face was
@@ -297,6 +339,9 @@ class ScanViewModel: ObservableObject {
 
             if animated {
                 CharacterEntityFactory.popIn(face, duration: faceAnimationDuration)
+                if let personality {
+                    CharacterEntityFactory.wearAccessory(on: face, personality: personality)
+                }
             }
 
             CharacterEntityFactory.startBlinking(on: face)
@@ -353,7 +398,7 @@ class ScanViewModel: ObservableObject {
         stopThinkingBubbleAnimation()
 
         let generation = personaBuildGeneration
-        let labels = ["Thinking", "Thinking.", "Thinking..", "Thinking..."]
+        let phrases = Self.scanThinkingBubbleFlows.randomElement() ?? Self.scanThinkingBubbleFlows[0]
         thinkingBubbleTask = Task { [weak self, weak anchor] in
             if delay > 0 {
                 try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
@@ -367,20 +412,172 @@ class ScanViewModel: ObservableObject {
                   self.isUnderstandingObject
             else { return }
 
-            self.addBubble(labeled: labels[index], to: anchor, afterDelay: 0)
-            index = (index + 1) % labels.count
-
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 420_000_000)
-                guard anchor === self.placedAnchor,
-                      generation == self.personaBuildGeneration,
-                      self.isUnderstandingObject
-                else { return }
-
-                self.replaceBubbleInstantly(labeled: labels[index], to: anchor)
-                index = (index + 1) % labels.count
+                let shouldContinue = await self.streamBubblePhrase(
+                    phrases[index],
+                    to: anchor,
+                    generation: generation,
+                    frameDelay: 0.34,
+                    holdDelay: 0.8,
+                    isStillWaiting: { self.isUnderstandingObject }
+                )
+                guard shouldContinue else { return }
+                index = (index + 1) % phrases.count
             }
         }
+    }
+
+    private func startReplyBubbleAnimation(on anchor: AnchorEntity) {
+        stopThinkingBubbleAnimation()
+
+        let generation = personaBuildGeneration
+        let phrases = Self.replyThinkingBubbleFlows.randomElement() ?? Self.replyThinkingBubbleFlows[0]
+        thinkingBubbleTask = Task { [weak self, weak anchor] in
+            var index = 0
+            guard let self,
+                  let anchor,
+                  anchor === self.placedAnchor,
+                  generation == self.personaBuildGeneration,
+                  self.isReplying
+            else { return }
+
+            while !Task.isCancelled {
+                let shouldContinue = await self.streamBubblePhrase(
+                    phrases[index],
+                    to: anchor,
+                    generation: generation,
+                    frameDelay: 0.32,
+                    holdDelay: 0.9,
+                    isStillWaiting: { self.isReplying }
+                )
+                guard shouldContinue else { return }
+                index = (index + 1) % phrases.count
+            }
+        }
+    }
+
+    private static let scanThinkingBubbleFlows: [[String]] = [
+        [
+            "Uuuu What's this ???",
+            "Taking a closer look...",
+            "Let meee see first...",
+            "Interesting...",
+            "Tiny camera brain loading..."
+        ],
+        [
+            "Ooo wait, what are you?",
+            "Looking at the shape...",
+            "Checking the shiny bits...",
+            "Reading the object vibes...",
+            "Almost got it..."
+        ],
+        [
+            "Hmm, mystery item spotted...",
+            "Taking a closer look...",
+            "Counting the clues...",
+            "Matching the tiny details...",
+            "Object brain waking up..."
+        ],
+        [
+            "Hold still, little mystery...",
+            "Scanning the colors...",
+            "Peeking at the edges...",
+            "Thinking with my camera...",
+            "Tiny idea loading..."
+        ]
+    ]
+
+    private static let replyThinkingBubbleFlows: [[String]] = [
+        [
+            "Wait let me check my tiny brain...",
+            "Eh? Not found? WAIT WAIT...",
+            "Let me look for clues...",
+            "Oh no, still nothing :)",
+            "Checking the whole universe...",
+            "Okay this is embarrassing..."
+        ],
+        [
+            "Tiny brain booting...",
+            "Opening my thought drawers...",
+            "Nope, wrong drawer...",
+            "Asking my object brain...",
+            "Almost got it..."
+        ],
+        [
+            "Thinking cap on...",
+            "Looking for clue crumbs...",
+            "Hmm, not that one...",
+            "Connecting the dots...",
+            "Answer smell detected..."
+        ],
+        [
+            "One sec, brain loading...",
+            "Shuffling tiny facts...",
+            "Checking my memory shelf...",
+            "Wiggling the answer loose...",
+            "Almost almost..."
+        ],
+        [
+            "Let me thinky-think...",
+            "Searching under the idea couch...",
+            "Nope, just dust...",
+            "Calling my smart sparkle...",
+            "Oho, clue found..."
+        ]
+    ]
+
+    private func showReplyFoundBubble() {
+        guard let anchor = placedAnchor else { return }
+        replaceBubbleInstantly(labeled: "AHA! Found It!", to: anchor)
+    }
+
+    private func streamBubblePhrase(
+        _ phrase: String,
+        to anchor: AnchorEntity,
+        generation: Int,
+        frameDelay: TimeInterval,
+        holdDelay: TimeInterval,
+        isStillWaiting: @escaping () -> Bool
+    ) async -> Bool {
+        for frame in streamedBubbleFrames(for: phrase) {
+            guard !Task.isCancelled,
+                  anchor === placedAnchor,
+                  generation == personaBuildGeneration,
+                  isStillWaiting()
+            else { return false }
+
+            replaceBubbleInstantly(labeled: frame, to: anchor)
+            try? await Task.sleep(nanoseconds: UInt64(frameDelay * 1_000_000_000))
+            guard !Task.isCancelled else { return false }
+        }
+
+        try? await Task.sleep(nanoseconds: UInt64(holdDelay * 1_000_000_000))
+        return !Task.isCancelled
+            && anchor === placedAnchor
+            && generation == personaBuildGeneration
+            && isStillWaiting()
+    }
+
+    private func streamedBubbleFrames(for phrase: String) -> [String] {
+        let trimmed = phrase.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+
+        let hasEllipsis = trimmed.hasSuffix("...")
+        let base = hasEllipsis ? String(trimmed.dropLast(3)) : trimmed
+        let words = base.split(separator: " ").map(String.init)
+        guard !words.isEmpty else { return [trimmed] }
+
+        var frames: [String] = words.indices.map { index in
+            words.prefix(index + 1).joined(separator: " ")
+        }
+
+        if hasEllipsis, let last = frames.last {
+            frames.append(last + ".")
+            frames.append(last + "..")
+            frames.append(last + "...")
+        }
+
+        return frames
     }
 
     private func stopThinkingBubbleAnimation() {
@@ -497,7 +694,6 @@ class ScanViewModel: ObservableObject {
         stopThinkingBubbleAnimation()
         persona = resolvedPersona
         history = []
-        isUnderstandingObject = false
 
         let resolvedPersonality = resolvedPersona.personalityKind.faceKind
         let resolvedExpression = resolvedPersona.emotionStyle.faceExpression
@@ -507,6 +703,27 @@ class ScanViewModel: ObservableObject {
         emotion=\(resolvedPersona.emotionStyle.rawValue)
         faceExpression=\(resolvedExpression.displayName)
         """)
+
+        let transformGeneration = personaBuildGeneration
+        _ = await streamBubblePhrase(
+            "Got It!",
+            to: anchor,
+            generation: transformGeneration,
+            frameDelay: 0.3,
+            holdDelay: 0.45,
+            isStillWaiting: { self.isUnderstandingObject }
+        )
+
+        guard anchor === placedAnchor,
+              transformGeneration == personaBuildGeneration
+        else { return }
+
+        replaceBubbleInstantly(labeled: "TRANSFORM!!!", to: anchor)
+        try? await Task.sleep(nanoseconds: 750_000_000)
+
+        guard anchor === placedAnchor,
+              transformGeneration == personaBuildGeneration
+        else { return }
 
         if !currentFaceHasPersonalityAccessory || resolvedPersonality != currentPersonality {
             currentPersonality = resolvedPersonality
@@ -519,6 +736,7 @@ class ScanViewModel: ObservableObject {
             persona: resolvedPersona
         )
         changeExpression(to: resolvedExpression)
+        isUnderstandingObject = false
         setBubbleText(resolvedPersona.greeting)
         voice.play(preparedSpeech)
     }
@@ -572,6 +790,10 @@ class ScanViewModel: ObservableObject {
         let message = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !message.isEmpty, let persona, !isReplying, !isUnderstandingObject else { return }
         isReplying = true
+        if let anchor = placedAnchor {
+            startReplyBubbleAnimation(on: anchor)
+        }
+        let responseGeneration = personaBuildGeneration
         let priorHistory = history
         history.append(ChatMessage(role: .child, text: message, emotion: nil))
         AIDebugLogger.trace("Chat history before response", """
@@ -581,6 +803,12 @@ class ScanViewModel: ObservableObject {
         """)
         Task {
             let reply = await self.personaGenerator.makeResponse(for: message, persona: persona, history: priorHistory)
+            guard responseGeneration == self.personaBuildGeneration,
+                  let anchor = self.placedAnchor
+            else {
+                self.isReplying = false
+                return
+            }
             self.history.append(ChatMessage(
                 role: .object,
                 text: reply.text,
@@ -597,10 +825,34 @@ class ScanViewModel: ObservableObject {
             faceExpression=\(reply.emotion.faceExpression.displayName)
             mouthAnimationMode=\(reply.mouthAnimationMode.rawValue)
             """)
-            let preparedSpeech = await self.voice.prepareSpeech(reply.text, emotion: reply.emotion, persona: persona)
-            self.setBubbleText(reply.text)
+            self.stopThinkingBubbleAnimation()
+            self.showReplyFoundBubble()
+            AIDebugLogger.trace("Reply found bubble", "AHA! Found It!")
+
+            async let preparedSpeech = self.voice.prepareSpeech(reply.text, emotion: reply.emotion, persona: persona)
+            try? await Task.sleep(nanoseconds: 1_350_000_000)
+            let speech = await preparedSpeech
+
+            guard responseGeneration == self.personaBuildGeneration,
+                  anchor === self.placedAnchor
+            else {
+                self.isReplying = false
+                return
+            }
+
             self.changeExpression(to: reply.emotion.faceExpression)
-            self.voice.play(preparedSpeech)
+            self.voice.play(speech)
+            let didStreamAnswer = await self.streamBubblePhrase(
+                reply.text,
+                to: anchor,
+                generation: responseGeneration,
+                frameDelay: 0.16,
+                holdDelay: 0,
+                isStillWaiting: { self.isReplying }
+            )
+            if !didStreamAnswer, responseGeneration == self.personaBuildGeneration {
+                self.setBubbleText(reply.text)
+            }
             self.isReplying = false
         }
     }

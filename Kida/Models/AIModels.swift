@@ -216,7 +216,7 @@ enum VoiceFamily: String, Codable, CaseIterable, Sendable {
     case careful
 }
 
-enum MouthShape: String, Codable {
+enum MouthShape: String, Codable, Sendable {
     case closed
     case smallOpen
     case open
@@ -225,14 +225,14 @@ enum MouthShape: String, Codable {
     case oShape
 }
 
-enum MouthAnimationMode: String, Codable {
+enum MouthAnimationMode: String, Codable, Sendable {
     case idle
     case talkingLoop
     case thinking
     case surprised
 }
 
-struct VoiceProfile: Codable, Equatable {
+struct VoiceProfile: Codable, Equatable, Sendable {
     var voiceIdentifier: String?
     var rate: Float
     var pitch: Float
@@ -243,7 +243,7 @@ struct VoiceProfile: Codable, Equatable {
     static let excited = VoiceProfile(voiceIdentifier: nil, rate: 0.45, pitch: 1.12, volume: 1.0)
 }
 
-struct ObjectPersona: Identifiable, Codable {
+struct ObjectPersona: Identifiable, Codable, Sendable {
     let id: UUID
     var name: String
     var objectLabel: String
@@ -343,7 +343,7 @@ struct ObjectPersona: Identifiable, Codable {
     }
 }
 
-struct ChatResponse: Codable {
+struct ChatResponse: Codable, Sendable {
     var text: String
     var emotion: Emotion
     var voiceDirection: String
@@ -413,8 +413,8 @@ struct ChatResponse: Codable {
     }
 }
 
-struct ChatMessage: Identifiable, Equatable {
-    enum Role {
+struct ChatMessage: Identifiable, Equatable, Sendable {
+    enum Role: Sendable {
         case child
         case object
     }

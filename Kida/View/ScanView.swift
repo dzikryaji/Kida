@@ -17,6 +17,7 @@ struct ScanView: View {
     @State private var showCloseConfirmation = false
     @State private var messageText = ""
     @State private var isListening = false
+    @State private var isSavingToCollection = false
     @State private var speech = SpeechRecognitionService()
     @State private var sentMessageTrail: [SentMessageBubbleModel] = []
 
@@ -48,7 +49,7 @@ struct ScanView: View {
     }
 
     private var collectionItemImage: Image {
-        if let data = scanViewModel.capturedImageData,
+        if let data = scanViewModel.capturedStickerImageData ?? scanViewModel.capturedImageData,
            let image = UIImage(data: data) {
             return Image(uiImage: image)
         }
@@ -71,6 +72,40 @@ struct ScanView: View {
     }
 
     private func send() { sendText(messageText) }
+
+    private func saveCurrentObjectToCollection() {
+        guard !isSavingToCollection else { return }
+
+        let itemName = collectionItemName
+        let itemDescription = scanViewModel.collectionItemDescription
+        isSavingToCollection = true
+
+        Task { @MainActor in
+            let stickerData = await scanViewModel.makeCollectionStickerData()
+            let repository = ScannedItemRepository(modelContext: modelContext)
+
+            do {
+                try repository.add(
+                    imageData: scanViewModel.capturedImageData,
+                    imageSegmentedData: stickerData,
+                    itemDescription: itemDescription,
+                    objectName: itemName
+                )
+
+                withAnimation(
+                    .spring(response: 0.35, dampingFraction: 0.85)
+                ) {
+                    showSaveConfirmation = false
+                }
+
+                scanViewModel.removePlacedObject()
+            } catch {
+                print("Failed to save scanned item: \(error)")
+            }
+
+            isSavingToCollection = false
+        }
+    }
 
     private func appendSentMessage(_ text: String) {
         withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
@@ -139,27 +174,8 @@ struct ScanView: View {
                     SaveConfirmationOverlay(
                         itemName: collectionItemName,
                         itemImage: collectionItemImage,
-                        onYes: {
-                            let repository = ScannedItemRepository(modelContext: modelContext)
-                            do {
-                                try repository.add(
-                                    imageData: scanViewModel.capturedImageData,
-                                    imageSegmentedData: nil,
-                                    itemDescription: scanViewModel.collectionItemDescription,
-                                    objectName: collectionItemName
-                                )
-                            } catch {
-                                print("Failed to save scanned item: \(error)")
-                            }
-
-                            withAnimation(
-                                .spring(response: 0.35, dampingFraction: 0.85)
-                            ) {
-                                showSaveConfirmation = false
-                            }
-
-                            scanViewModel.removePlacedObject()
-                        },
+                        isSaving: isSavingToCollection,
+                        onYes: saveCurrentObjectToCollection,
                         onNotNow: {
                             withAnimation(
                                 .spring(response: 0.35, dampingFraction: 0.85)
