@@ -9,17 +9,18 @@ import SwiftUI
 
 struct ScanView: View {
     @ObservedObject var scanViewModel: ScanViewModel
-
+    @Environment(\.modelContext) private var modelContext
+    
     @State private var showSaveConfirmation = false
     @State private var showCloseConfirmation = false
     @State private var messageText = ""
-
+    
     @FocusState private var isTyping: Bool
-
+    
     var isFullScreenMode: Bool {
         scanViewModel.isScanning || scanViewModel.placedAnchor != nil
     }
-
+    
     var body: some View {
         NavigationStack {
             ZStack {
@@ -43,19 +44,28 @@ struct ScanView: View {
                 // needs its own .animation(value:) rather than relying on a
                 // modifier attached higher up in ContentView.
                 .animation(.easeInOut(duration: 0.3), value: isFullScreenMode)
-
+                
                 if showSaveConfirmation && !showCloseConfirmation {
                     SaveConfirmationOverlay(
                         itemName: "Mug",
                         itemImage: Image(systemName: "cup.and.saucer.fill"),
                         onYes: {
-                            withAnimation(
-                                .spring(response: 0.35, dampingFraction: 0.85)
-                            ) {
+                            let repository = ScannedItemRepository(modelContext: modelContext)
+                            do {
+                                try repository.add(
+                                    imageData: scanViewModel.capturedImageData,
+                                    imageSegmentedData: nil,
+                                    itemDescription: "\"Hi! I'm Mug. I'm here to make your drinks extra special.\"",
+                                    objectName: "Mug"
+                                )
+                            } catch {
+                                print("Failed to save scanned item: \(error)")
+                            }
+                            
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                                 showSaveConfirmation = false
                             }
-
-                            scanViewModel.removePlacedObject()
+                            scanViewModel.removePlacedObject()   // also clears capturedImageData
                         },
                         onNotNow: {
                             withAnimation(
@@ -67,7 +77,7 @@ struct ScanView: View {
                     )
                     .transition(.opacity.combined(with: .scale(scale: 0.9)))
                 }
-
+                
                 if !showSaveConfirmation && showCloseConfirmation {
                     CloseConfirmationOverlay(
                         itemName: "Mug",
@@ -77,7 +87,7 @@ struct ScanView: View {
                             ) {
                                 showCloseConfirmation = false
                             }
-
+                            
                             scanViewModel.removePlacedObject()
                         },
                         onNotNow: {
@@ -90,11 +100,11 @@ struct ScanView: View {
                     )
                     .transition(.opacity.combined(with: .scale(scale: 0.9)))
                 }
-
+                
                 if isFullScreenMode {
                     VStack {
                         Spacer()
-
+                        
                         HStack(spacing: 8) {
                             TextField("Text me", text: $messageText)
                                 .focused($isTyping)
@@ -105,7 +115,7 @@ struct ScanView: View {
                                     .regular.interactive(),
                                     in: .capsule
                                 )
-
+                            
                             Button {
                                 // action
                                 if isTyping {
@@ -130,7 +140,7 @@ struct ScanView: View {
                             .padding(2)
                             .transition(.scale.combined(with: .opacity))
                             .glassEffect(.regular.interactive(), in: .capsule)
-
+                            
                         }
                         .padding(.trailing, isTyping ? 6 : 6)
                         .padding(.horizontal, 16)
@@ -139,7 +149,7 @@ struct ScanView: View {
                     }
                     .transition(.opacity)
                 }
-
+                
                 if scanViewModel.isScanning {
                     ScanningOverlay()
                         .transition(.opacity)
@@ -161,7 +171,7 @@ struct ScanView: View {
                             showCloseConfirmation || showSaveConfirmation
                         )
                     }
-
+                    
                     ToolbarItem(placement: .topBarTrailing) {
                         Button(action: {
                             withAnimation(
@@ -180,7 +190,7 @@ struct ScanView: View {
                         )
                     }
                 }
-
+                
             }
         }
     }
@@ -188,7 +198,7 @@ struct ScanView: View {
 
 #Preview {
     let viewModel = ScanViewModel()
-
+    
     ScanView(scanViewModel: viewModel)
 }
 
@@ -198,7 +208,7 @@ struct ScanView: View {
 /// there's no fixed timer behind it anymore.
 struct ScanningOverlay: View {
     @State private var animate = false
-
+    
     var body: some View {
         ZStack {
             Color.black.opacity(0.55)

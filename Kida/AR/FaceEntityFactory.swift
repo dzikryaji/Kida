@@ -172,8 +172,15 @@ enum FaceEntityFactory {
         }
     }
 
-    private static var face: Entity?
     private static var faces: [Personality: Entity] = [:]
+
+    /// The in-flight/completed base-face build, shared by
+    /// `preloadBaseFace()` and `makeFace(personality:)`. Caching the
+    /// `Task` itself (rather than a "did it start" bool + an optional
+    /// result) is what makes concurrent callers safe: whoever calls in
+    /// while a build is already running just awaits the same task
+    /// instead of racing it or reading a not-yet-populated result.
+    private static var baseFaceTask: Task<Entity, Error>?
 
     /// Per-face running animation loops, keyed by the face entity's
     /// identity so multiple faces can each independently blink or talk
@@ -212,42 +219,62 @@ enum FaceEntityFactory {
     // MARK: - Base face
 
     /// Builds the shared base face (eyes + eyebrows + mouth, no
-    /// accessory) if it hasn't been built yet, and caches it in `face`.
-    /// Every personality's face is cloned from this, so the actual asset
+    /// accessory) if it hasn't been built yet, caching the build as a
+    /// `Task` in `baseFaceTask`. Every personality's face is cloned from
+    /// this, so the actual asset
     /// loading only ever happens once no matter how many times/which
     /// personalities `makeFace` is called with afterward.
     ///
-    /// Safe to call concurrently with itself or with `makeFace` -- worst
-    /// case under a race is the eyes/eyebrows/mouth assets get loaded
-    /// twice and the loser's result is simply discarded, since both
-    /// writes assign the same freshly-built `Entity` shape into `face`.
+    /// Safe to call concurrently with itself or with `makeFace` -- a
+    /// second caller arriving while a build is already in flight (e.g.
+    /// `makeFace` called right after `preloadBaseFace()` kicked off but
+    /// before it finished) awaits the *same* `Task` rather than starting
+    /// a redundant load or reading `face` before it's populated.
     @discardableResult
     private static func buildBaseFaceIfNeeded() async throws -> Entity {
-        if let face { return face }
+        if let baseFaceTask {
+            return try await baseFaceTask.value
+        }
 
-        let baseFace = Entity()
+        let task = Task<Entity, Error> {
+            let baseFace = Entity()
 
-        async let eyesTask = loadAsset(named: "eyes", scale: assetScale)
-        async let eyebrowsTask = makeEyebrowPair()
-        async let mouthTask = loadAsset(named: "mouth", scale: assetScale)
+            async let eyesTask = loadAsset(named: "eyes", scale: assetScale)
+            async let eyebrowsTask = makeEyebrowPair()
+            async let mouthTask = loadAsset(named: "mouth", scale: assetScale)
 
-        let eyes = try await eyesTask
-        let eyebrows = try await eyebrowsTask
-        let mouth = try await mouthTask
-        eyes.name = "eyes"
-        mouth.name = "mouth"
+            let eyes = try await eyesTask
+            let eyebrows = try await eyebrowsTask
+            let mouth = try await mouthTask
+            eyes.name = "eyes"
+            mouth.name = "mouth"
 
-        eyes.position = .zero
-        eyebrows.position = [0, eyebrowVerticalOffset, 0]
-        mouth.position = [0, -mouthVerticalOffset, 0]
+            eyes.position = .zero
+            eyebrows.position = [0, eyebrowVerticalOffset, 0]
+            mouth.position = [0, -mouthVerticalOffset, 0]
 
-        baseFace.addChild(eyes)
-        baseFace.addChild(eyebrows)
-        baseFace.addChild(mouth)
-        baseFace.components.set(BillboardComponent())
+            baseFace.addChild(eyes)
+            baseFace.addChild(eyebrows)
+            baseFace.addChild(mouth)
+            baseFace.components.set(BillboardComponent())
 
-        face = baseFace
-        return baseFace
+            return baseFace
+        }
+
+        baseFaceTask = task
+
+        do {
+            return try await task.value
+        } catch {
+            // Don't let a failed build stick around as the cached
+            // result -- clear it so the *next* call (preload retry or
+            // a real makeFace call) starts a fresh attempt instead of
+            // forever re-awaiting this same failed task. Only one build
+            // is ever in flight at a time (this function is the only
+            // writer of `baseFaceTask`), so it's always safe to clear.
+            baseFaceTask = nil
+            throw error
+        }
     }
 
     /// Warms the shared base-face cache (eyes + eyebrows + mouth) ahead
@@ -281,8 +308,12 @@ enum FaceEntityFactory {
     /// you want a different one.
     static func makeFace(personality: Personality) async throws -> Entity {
         // Build the base face (eyes + eyebrows + mouth) once. If
-        // `preloadBaseFace()` already ran (e.g. kicked off when the view
-        // model started), this is a cache hit and returns immediately.
+        // `preloadBaseFace()` already ran and finished (e.g. kicked off
+        // when the view model started), `buildBaseFaceIfNeeded` sees the
+        // cached, already-completed task and returns immediately. If the
+        // preload is still running, this awaits that *same* task instead
+        // of racing it -- so `makeFace` called mid-preload waits for it
+        // rather than reading a not-yet-populated face.
         let baseFace = try await buildBaseFaceIfNeeded()
 
         // Build this personality once.
