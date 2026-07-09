@@ -382,36 +382,13 @@ private struct SentMessageBubble: View {
                     .frame(maxWidth: proxy.size.width * maxWidthFraction)
                     .background {
                         SentMessageBubbleShape()
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        Color(red: 0.56, green: 0.35, blue: 0.96).opacity(0.62),
-                                        Color(red: 0.78, green: 0.39, blue: 0.93).opacity(0.54)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
+                            .fill(Color(red: 0.62, green: 0.42, blue: 0.95).opacity(0.16))
                     }
                     .glassEffect(
-                        .regular.tint(Color(red: 0.66, green: 0.42, blue: 1.0).opacity(0.30)),
+                        .regular.tint(Color(red: 0.66, green: 0.42, blue: 1.0).opacity(0.24)),
                         in: SentMessageBubbleShape()
                     )
-                    .overlay {
-                        SentMessageBubbleShape()
-                            .stroke(
-                                LinearGradient(
-                                    colors: [
-                                        Color.white.opacity(0.9),
-                                        Color.white.opacity(0.28)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                lineWidth: 1.3
-                            )
-                    }
-                    .shadow(color: Color.white.opacity(0.18), radius: 7, y: -2)
+                    .shadow(color: Color.white.opacity(0.14), radius: 7, y: -2)
                     .shadow(color: Color.black.opacity(0.18), radius: 12, y: 6)
                     .opacity(opacity)
             }
@@ -567,12 +544,32 @@ struct ScanningOverlay: View {
             guard !reduceMotion else { return }
             pulse = false
             sweep = false
-            withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
-                pulse = true
+
+            // IMPORTANT: don't start the repeatForever animations synchronously
+            // inside onAppear. onAppear fires while SwiftUI is still inside the
+            // transaction created by this view's own `.transition(.opacity)`
+            // insertion. If withAnimation(...repeatForever...) runs in that same
+            // transaction, the repeating animation gets scoped to the transition's
+            // transaction and is torn down as soon as that transaction finishes -
+            // which is why the sweep line only went down once instead of
+            // bouncing back and forth forever.
+            //
+            // Deferring to the next run loop tick lets the insertion transition
+            // commit first, so these animations start in their own transaction
+            // and loop indefinitely as intended.
+            DispatchQueue.main.async {
+                withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+                    pulse = true
+                }
+                withAnimation(.easeInOut(duration: 0.95).repeatForever(autoreverses: true)) {
+                    sweep = true
+                }
             }
-            withAnimation(.easeInOut(duration: 0.95).repeatForever(autoreverses: true)) {
-                sweep = true
-            }
+        }
+        .onDisappear {
+            // Reset so re-appearing starts clean rather than mid-cycle.
+            pulse = false
+            sweep = false
         }
     }
 }

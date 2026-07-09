@@ -52,8 +52,8 @@ enum BubbleEntityFactory {
 
     static let fontSize: Float = 0.018
     static let extrusionDepth: Float = 0.002
-    static let horizontalPadding: Float = 0.028   // extra roomy so short text still reads as a pill, not a circle
-    static let verticalPadding: Float = 0.012
+    static let horizontalPadding: Float = 0.04   // extra roomy so short text still reads as a pill, not a circle
+    static let verticalPadding: Float = 0.03
 
     /// Alpha applied to the bubble background (and tail) only -- text
     /// stays fully opaque so it's always legible over whatever real-world

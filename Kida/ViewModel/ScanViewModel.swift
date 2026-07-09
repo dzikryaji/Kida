@@ -23,8 +23,8 @@ class ScanViewModel: ObservableObject {
 
     @Published private(set) var placedAnchor: AnchorEntity?
     @Published private(set) var isScanning: Bool = false
-    @Published private(set) var currentPersonality: FaceEntityFactory.Personality = .fancy
-    @Published private(set) var currentExpression: FaceEntityFactory.Expression = .happy
+    @Published private(set) var currentPersonality: FaceEntityFactory.Personality = .caregiver
+    @Published private(set) var currentExpression: FaceEntityFactory.Expression = .sad
     @Published private(set) var capturedImageData: Data?
 
     private let placementService: ARPlacementServicing
@@ -527,7 +527,7 @@ class ScanViewModel: ObservableObject {
         AIDebugLogger.trace("VLM visual persona update", """
         personality=\(resolvedPersona.personalityKind.rawValue)
         emotion=\(resolvedPersona.emotionStyle.rawValue)
-        faceExpression=\(resolvedExpression.debugName)
+        faceExpression=\(resolvedExpression.displayName)
         """)
 
         if !currentFaceHasPersonalityAccessory || resolvedPersonality != currentPersonality {
@@ -616,7 +616,7 @@ class ScanViewModel: ObservableObject {
             """)
             AIDebugLogger.trace("Chat visual update", """
             emotion=\(reply.emotion.rawValue)
-            faceExpression=\(reply.emotion.faceExpression.debugName)
+            faceExpression=\(reply.emotion.faceExpression.displayName)
             mouthAnimationMode=\(reply.mouthAnimationMode.rawValue)
             """)
             let preparedSpeech = await self.voice.prepareSpeech(reply.text, emotion: reply.emotion, persona: persona)

@@ -21,7 +21,7 @@ enum AppTab: String, CaseIterable {
 
     var icon: String {
         switch self {
-        case .scan: "camera.macro.circle.fill"
+        case .scan: "camera.fill"
         case .collection: "square.stack.3d.up.fill"
         }
     }
