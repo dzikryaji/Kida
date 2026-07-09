@@ -386,16 +386,26 @@ def tavily_query_for(card: dict[str, Any]) -> str:
     return f"kid friendly educational facts about {subject} safe everyday use"
 
 
-def tavily_retrieve_facts(card: dict[str, Any], limit: int = 4) -> dict[str, Any] | None:
+def tavily_search_facts(
+    *,
+    query: str,
+    label: str,
+    safety_notes: list[str] | None = None,
+    limit: int = 4,
+    cache_prefix: str = "scan",
+) -> dict[str, Any] | None:
     if not is_tavily_configured():
         return None
 
-    label = normalize_label(str(card.get("primaryLabel") or "object"))
-    if is_dangerous(label, card.get("safetyNotes", [])):
+    label = normalize_label(label)
+    if is_dangerous(label, safety_notes or []):
         return None
 
-    query = tavily_query_for(card)
-    cache_key = query.lower()
+    query = clean_text(query, limit=220)
+    if not query or not is_safe_fact_snippet(query):
+        return None
+
+    cache_key = f"{cache_prefix}:{query.lower()}"
     cached = TAVILY_CACHE.get(cache_key)
     if cached and time.time() - cached[0] < TAVILY_CACHE_TTL:
         return cached[1]
@@ -465,6 +475,47 @@ def tavily_retrieve_facts(card: dict[str, Any], limit: int = 4) -> dict[str, Any
     }
     TAVILY_CACHE[cache_key] = (time.time(), retrieved)
     return retrieved
+
+
+def tavily_retrieve_facts(card: dict[str, Any], limit: int = 4) -> dict[str, Any] | None:
+    label = normalize_label(str(card.get("primaryLabel") or "object"))
+    return tavily_search_facts(
+        query=tavily_query_for(card),
+        label=label,
+        safety_notes=card.get("safetyNotes", []),
+        limit=limit,
+        cache_prefix="scan",
+    )
+
+
+def question_search_query(card: dict[str, Any], search_question: str) -> str:
+    label = normalize_label(str(card.get("primaryLabel") or "object"))
+    child_description = clean_text(card.get("childDescription"), limit=120)
+    functionality = clean_text(card.get("functionality"), limit=120)
+    return " ".join(
+        part for part in [
+            "kid friendly educational answer",
+            f"about a {label}",
+            child_description,
+            functionality,
+            clean_text(search_question, limit=140),
+        ] if part
+    )
+
+
+def tavily_retrieve_question_facts(
+    card: dict[str, Any],
+    search_question: str,
+    limit: int = 4,
+) -> dict[str, Any] | None:
+    label = normalize_label(str(card.get("primaryLabel") or "object"))
+    return tavily_search_facts(
+        query=question_search_query(card, search_question),
+        label=label,
+        safety_notes=card.get("safetyNotes", []),
+        limit=limit,
+        cache_prefix="question",
+    )
 
 
 def merge_retrieved_facts(local: dict[str, Any], tavily: dict[str, Any] | None) -> dict[str, Any]:
@@ -739,7 +790,7 @@ class KidaVLMHandler(BaseHTTPRequestHandler):
         self.send_error(404)
 
     def do_POST(self) -> None:
-        if self.path not in ("/object/understand", "/object/sticker"):
+        if self.path not in ("/object/understand", "/object/sticker", "/object/retrieve"):
             self.send_error(404)
             return
 
@@ -749,6 +800,9 @@ class KidaVLMHandler(BaseHTTPRequestHandler):
 
         if self.path == "/object/sticker":
             self.handle_sticker()
+            return
+        if self.path == "/object/retrieve":
+            self.handle_question_retrieval()
             return
 
         try:
@@ -789,6 +843,54 @@ class KidaVLMHandler(BaseHTTPRequestHandler):
                     "retrievedFacts": retrieved,
                     "suggestedQuestions": suggested,
                     "source": source,
+                }
+            )
+        except Exception as error:
+            self.send_json({"error": str(error)}, status=400)
+
+    def handle_question_retrieval(self) -> None:
+        try:
+            request = self.read_json()
+            raw_card = request.get("objectIntelligence")
+            object_label = request.get("objectLabel") or "object"
+            detector = {
+                "label": object_label,
+                "confidence": 0.5,
+                "alternatives": [],
+            }
+            if isinstance(raw_card, dict):
+                card = sanitized_card(raw_card, detector)
+            else:
+                card = fallback_card(detector)
+
+            raw_search_question = clean_text(request.get("searchQuestion"), limit=160)
+            raw_child_question = clean_text(request.get("childQuestion"), limit=160)
+            search_question = raw_search_question or raw_child_question
+            if not search_question:
+                raise ValueError("Missing searchQuestion")
+            if not is_safe_fact_snippet(search_question):
+                raise ValueError("Unsafe searchQuestion")
+
+            label_candidates = [
+                card.get("primaryLabel", "object"),
+                object_label,
+            ]
+            local = retrieve_facts([str(label) for label in label_candidates])
+            tavily = tavily_retrieve_question_facts(card, search_question)
+            retrieved = merge_retrieved_facts(local, tavily)
+            source = "local"
+            if tavily:
+                source = "tavily+local"
+            elif local.get("source"):
+                source = str(local.get("source"))
+            retrieved["source"] = source
+
+            self.send_json(
+                {
+                    "retrievedFacts": retrieved,
+                    "source": source,
+                    "searchQuestion": search_question,
+                    "tavilyConfigured": is_tavily_configured(),
                 }
             )
         except Exception as error:
