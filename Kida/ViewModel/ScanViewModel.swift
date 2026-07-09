@@ -60,7 +60,7 @@ class ScanViewModel: ObservableObject {
     private let bubbleAnimationDuration: TimeInterval = 0.3
     private let bubbleAppearDelayAfterFace: TimeInterval = 0.2
     private let bubbleSlideOffset: Float = 0.03
-    private let bubbleYOffset: Float = CharacterEntityFactory.eyebrowVerticalOffset + 0.15
+    private let bubbleYOffset: Float = CharacterEntityFactory.eyebrowVerticalOffset + 0.10
     private let bubbleZOffset: Float = 0.025
 
     var collectionItemName: String {

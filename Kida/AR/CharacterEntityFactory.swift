@@ -698,7 +698,7 @@ enum CharacterEntityFactory {
     static let fillBottom: UIColor = UIColor(red: 0.878, green: 0.659, blue: 0.243, alpha: 1) // #E0A83E
     static let textColor: UIColor  = UIColor(red: 0.290, green: 0.231, blue: 0.122, alpha: 1) // #4A3B1F
 
-    static let fontSize: Float = 0.018
+    static let fontSize: Float = 0.014
     static let extrusionDepth: Float = 0.002
     static let horizontalPadding: Float = 0.04   // extra roomy so short text still reads as a pill, not a circle
     static let verticalPadding: Float = 0.03
