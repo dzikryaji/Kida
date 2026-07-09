@@ -4,8 +4,8 @@ import Foundation
 /// the **AR layer** renders `accessory` as a 3D prop on the face, the **AI layer** makes
 /// the Foundation Model speak in `voice`. A starting taxonomy, not rigid rules.
 ///
-/// Source of truth = the VLM/Gemini structured output (it sees the image). Code only
-/// *overrides* to `.cautious` for dangerous objects — safety beats flavor (see PersonalityMapper).
+/// Source of truth = the scanned object. VLM/Gemini may suggest a flavor, but strong
+/// object taxonomy and safety overrides keep the AR accessory stable and varied.
 enum PersonalityKind: String, Codable, CaseIterable, Sendable {
     case boss        // round glasses — authority / money / "holds power"
     case cool        // sunglasses — sport / play / trendy
@@ -49,11 +49,23 @@ enum PersonalityKind: String, Codable, CaseIterable, Sendable {
     /// Resting face emotion for the character.
     var defaultEmotion: Emotion {
         switch self {
-        case .boss: return .neutral
-        case .cool: return .excited
+        case .boss: return .happy
+        case .cool: return .happy
         case .fancy: return .happy
         case .sweet: return .happy
-        case .cautious: return .thinking
+        case .cautious: return .angry
+        }
+    }
+
+    /// Stable voice family chosen at scan time. Swift maps gender + emotion to concrete IDs;
+    /// family keeps the character direction consistent without exposing provider voice IDs.
+    var defaultVoiceFamily: VoiceFamily {
+        switch self {
+        case .boss: return .confident
+        case .cool: return .bright
+        case .fancy: return .gentle
+        case .sweet: return .gentle
+        case .cautious: return .careful
         }
     }
 }
@@ -68,17 +80,25 @@ enum PersonalityMapper {
         safetyNotes: [String] = []
     ) -> PersonalityKind {
         if isDangerous(label: label, safetyNotes: safetyNotes) { return .cautious }
-        return suggested ?? mapFromLabel(label)
+        if let mapped = explicitMapFromLabel(label) { return mapped }
+        return suggested ?? .cool
     }
 
     /// Keyword fallback when the VLM didn't classify (deterministic, per the design doc).
     static func mapFromLabel(_ label: String) -> PersonalityKind {
+        if let mapped = explicitMapFromLabel(label) { return mapped }
+        return .cool   // friendly, low-stakes default
+    }
+
+    /// Strong taxonomy hits override the VLM when it lazily returns `.cool`.
+    /// Unknown/ambiguous labels still let the VLM suggestion win.
+    static func explicitMapFromLabel(_ label: String) -> PersonalityKind? {
         let text = label.lowercased()
+        if contains(text, bossWords) { return .boss }
         if contains(text, coolWords) { return .cool }
         if contains(text, sweetWords) { return .sweet }
         if contains(text, fancyWords) { return .fancy }
-        if contains(text, bossWords) { return .boss }
-        return .cool   // friendly, low-stakes default
+        return nil
     }
 
     /// Danger drives both `.cautious` and the kid-safety guardrail. Over-triggering is the
@@ -89,8 +109,26 @@ enum PersonalityMapper {
         return contains(text, dangerWords)
     }
 
-    private static func contains(_ text: String, _ words: [String]) -> Bool {
-        words.contains { text.contains($0) }
+    private static func contains(_ text: String, _ terms: [String]) -> Bool {
+        let words = Set(text.split { !$0.isLetter && !$0.isNumber }.map(String.init))
+        return terms.contains { rawTerm in
+            let term = rawTerm.lowercased()
+            if term.contains(" ") {
+                return text.contains(term)
+            }
+            return wordVariants(for: term).contains { words.contains($0) }
+        }
+    }
+
+    private static func wordVariants(for term: String) -> [String] {
+        var variants = [term, "\(term)s"]
+        if term.hasSuffix("s") || term.hasSuffix("x") || term.hasSuffix("ch") {
+            variants.append("\(term)es")
+        }
+        if term == "knife" {
+            variants.append("knives")
+        }
+        return variants
     }
 
     static let dangerWords = [
@@ -101,18 +139,22 @@ enum PersonalityMapper {
     static let coolWords = [
         "ball", "skateboard", "sneaker", "shoe", "headphone", "earbud", "sunglass",
         "bicycle", "bike", "scooter", "controller", "sport", "guitar", "cap",
+        "game", "toy car", "frisbee",
     ]
     static let sweetWords = [
         "pillow", "blanket", "plush", "stuffed", "teddy", "doll", "toy", "teapot",
-        "tissue", "cushion", "mug", "flower", "bear", "bunny", "baby",
+        "tissue", "tissue box", "cushion", "mug", "flower", "bear", "bunny", "baby",
+        "baby bottle", "soft",
     ]
     static let fancyWords = [
         "perfume", "wine", "champagne", "vase", "frame", "jewel", "ring", "necklace",
-        "crystal", "trophy", "medal", "bow tie", "watch",
+        "crystal", "trophy", "medal", "bow tie", "watch", "photo", "glassware",
+        "tableware", "decorative",
     ]
     static let bossWords = [
         "money", "cash", "wallet", "credit card", "coin", "safe", "piggy", "remote",
         "key", "calculator", "book", "clock", "phone", "laptop", "computer", "tablet",
+        "badge", "card",
     ]
 
     #if DEBUG
@@ -124,6 +166,7 @@ enum PersonalityMapper {
         assert(resolve(suggested: nil, label: "teddy bear") == .sweet)
         assert(resolve(suggested: nil, label: "wine glass") == .fancy)
         assert(resolve(suggested: nil, label: "wallet") == .boss)
+        assert(resolve(suggested: .cool, label: "laptop") == .boss, "strong taxonomy beats lazy VLM")
         assert(resolve(suggested: .boss, label: "banana") == .boss, "VLM pick honored when safe")
     }
     #endif
@@ -161,5 +204,13 @@ extension Emotion {
         case .sad: return "sad"
         default: return "happy"
         }
+    }
+}
+
+extension VoiceGender {
+    /// Launch-stable fallback so an object keeps the same gender when VLM does not choose one.
+    static func stableDefault(for label: String) -> VoiceGender {
+        let seed = label.lowercased().unicodeScalars.reduce(0) { $0 &+ Int($1.value) }
+        return seed % 2 == 0 ? .woman : .man
     }
 }

@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 enum AppTab: String, CaseIterable {
     case scan
@@ -28,6 +29,7 @@ enum AppTab: String, CaseIterable {
 
 struct ContentView: View {
     @State private var selection: AppTab = .collection
+    @State private var isCollectionDetailPresented = false
     @StateObject private var scanViewModel = ScanViewModel()
 
     private var isFullScreenMode: Bool {
@@ -51,7 +53,8 @@ struct ContentView: View {
                 systemImage: AppTab.collection.icon,
                 value: .collection
             ) {
-                CollectionView()
+                CollectionView(isDetailPresented: $isCollectionDetailPresented)
+                    .toolbar(isCollectionDetailPresented ? .hidden : .visible, for: .tabBar)
             }
         }
         // The actual driver of the animation is `withAnimation` wrapping the
@@ -65,4 +68,5 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
+        .modelContainer(for: ScannedItem.self, inMemory: true)
 }

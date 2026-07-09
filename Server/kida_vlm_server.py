@@ -16,6 +16,9 @@ import shlex
 import subprocess
 import sys
 import tempfile
+import time
+import urllib.error
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -28,6 +31,11 @@ FACTS_PATH = ROOT / "object_facts.json"
 def normalize_label(identifier: str) -> str:
     lowercased = (identifier or "object").lower().replace("_", " ").strip()
     aliases = [
+        (["perfume bottle", "cologne bottle"], "perfume bottle"),
+        (["medicine bottle", "pill bottle"], "medicine bottle"),
+        (["baby bottle"], "baby bottle"),
+        (["tissue box"], "tissue box"),
+        (["wine glass", "champagne glass"], "wine glass"),
         (["coffee mug", "mug", "cup", "teacup", "goblet"], "cup"),
         (["water bottle", "bottle", "flask"], "bottle"),
         (["book", "notebook", "binder", "comic book"], "book"),
@@ -53,6 +61,50 @@ def load_fact_entries() -> list[dict[str, Any]]:
 
 FACT_ENTRIES = load_fact_entries()
 
+PERSONALITIES = {"boss", "cool", "fancy", "sweet", "cautious"}
+EMOTIONS = {"happy", "sad", "angry"}
+VOICE_GENDERS = {"man", "woman"}
+VOICE_FAMILIES = {"bright", "gentle", "confident", "careful"}
+TAVILY_ENDPOINT = "https://api.tavily.com/search"
+TAVILY_TIMEOUT = float(os.environ.get("KIDA_TAVILY_TIMEOUT", "8"))
+TAVILY_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+TAVILY_CACHE_TTL = float(os.environ.get("KIDA_TAVILY_CACHE_TTL", "86400"))
+
+DANGER_WORDS = [
+    "knife", "scissor", "blade", "razor", "stove", "oven", "heater", "outlet",
+    "socket", "plug", "cord", "battery", "lighter", "match", "candle", "flame",
+    "medicine", "pill", "syringe", "needle", "chemical", "cleaner", "bleach", "sharp",
+]
+COOL_WORDS = [
+    "ball", "skateboard", "sneaker", "shoe", "headphone", "earbud", "sunglass",
+    "bicycle", "bike", "scooter", "controller", "sport", "guitar", "cap",
+    "game", "toy car", "frisbee",
+]
+SWEET_WORDS = [
+    "pillow", "blanket", "plush", "stuffed", "teddy", "doll", "toy", "teapot",
+    "tissue", "tissue box", "cushion", "mug", "flower", "bear", "bunny", "baby",
+    "baby bottle", "soft",
+]
+FANCY_WORDS = [
+    "perfume", "wine", "champagne", "vase", "frame", "jewel", "ring", "necklace",
+    "crystal", "trophy", "medal", "bow tie", "watch", "photo", "glassware",
+    "tableware", "decorative",
+]
+BOSS_WORDS = [
+    "money", "cash", "wallet", "credit card", "coin", "safe", "piggy", "remote",
+    "key", "calculator", "book", "clock", "phone", "laptop", "computer", "tablet",
+    "badge", "card",
+]
+UNSAFE_FACT_WORDS = [
+    "kill", "murder", "stab", "shoot", "weapon", "bomb", "blood", "suicide",
+    "sex", "naked", "drug", "alcohol", "beer", "wine", "cigarette", "vape",
+    "password", "credit card", "phone number", "address", "politics",
+]
+SHOPPING_WORDS = [
+    "buy", "shop", "sale", "discount", "price", "coupon", "subscribe",
+    "affiliate", "amazon", "cart", "checkout",
+]
+
 
 def _sticker_backend_available() -> bool:
     try:
@@ -60,6 +112,133 @@ def _sticker_backend_available() -> bool:
         return sticker_service.available()
     except Exception:
         return False
+
+
+def contains_any(text: str, words: list[str]) -> bool:
+    tokens = set(re.findall(r"[a-z0-9]+", text.lower()))
+    for word in words:
+        term = word.lower()
+        if " " in term:
+            if term in text:
+                return True
+            continue
+        variants = {term, f"{term}s"}
+        if term.endswith(("s", "x", "ch")):
+            variants.add(f"{term}es")
+        if term == "knife":
+            variants.add("knives")
+        if tokens.intersection(variants):
+            return True
+    return False
+
+
+def is_dangerous(label: str, safety_notes: list[str] | None = None) -> bool:
+    text = f"{label} {' '.join(safety_notes or [])}".lower()
+    return contains_any(text, DANGER_WORDS)
+
+
+def explicit_personality_for_label(label: str, safety_notes: list[str] | None = None) -> str | None:
+    text = label.lower()
+    if is_dangerous(label, safety_notes):
+        return "cautious"
+    if contains_any(text, BOSS_WORDS):
+        return "boss"
+    if contains_any(text, COOL_WORDS):
+        return "cool"
+    if contains_any(text, SWEET_WORDS):
+        return "sweet"
+    if contains_any(text, FANCY_WORDS):
+        return "fancy"
+    return None
+
+
+def map_personality(label: str, safety_notes: list[str] | None = None) -> str:
+    explicit = explicit_personality_for_label(label, safety_notes)
+    if explicit:
+        return explicit
+    return "cool"
+
+
+def default_emotion(personality: str) -> str:
+    return "angry" if personality == "cautious" else "happy"
+
+
+def voice_family_for_personality(personality: str) -> str:
+    return {
+        "boss": "confident",
+        "cool": "bright",
+        "fancy": "gentle",
+        "sweet": "gentle",
+        "cautious": "careful",
+    }.get(personality, "bright")
+
+
+def character_name_for(label: str, personality: str) -> str:
+    normalized = normalize_label(label)
+    names = {
+        "laptop": "Captain Click",
+        "phone": "Captain Ping",
+        "book": "Professor Page",
+        "bottle": "Sip Scout",
+        "cup": "Cup Cozy",
+        "plant": "Leafy Pal",
+        "toy": "Giggle Buddy",
+        "chair": "Comfy Captain",
+        "table": "Tidy Table",
+        "bag": "Pocket Pal",
+        "pen": "Inky Spark",
+    }
+    if normalized in names:
+        return names[normalized]
+    display = " ".join(part.capitalize() for part in normalized.split())
+    prefix = {
+        "boss": "Captain",
+        "cool": "Dash",
+        "fancy": "Fancy",
+        "sweet": "Cozy",
+        "cautious": "Careful",
+    }.get(personality, "Kida")
+    return f"{prefix} {display}".strip()
+
+
+def sanitize_character_name(value: Any, label: str, personality: str) -> str:
+    fallback = character_name_for(label, personality)
+    if not isinstance(value, str):
+        return fallback
+    cleaned = clean_text(value, limit=32)
+    if not 2 <= len(cleaned) <= 28:
+        return fallback
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 '-]{1,27}", cleaned):
+        return fallback
+    lower = cleaned.lower()
+    blocked = ["kid", "child", "baby", "sexy", "kill", "stab", "gun", "blood", "password"]
+    if any(term in lower for term in blocked):
+        return fallback
+    normalized = normalize_label(label)
+    generic_names = {
+        f"sunny {normalized}",
+        f"happy {normalized}",
+        f"friendly {normalized}",
+        f"{normalized} friend",
+        f"{normalized} buddy",
+    }
+    if lower in generic_names:
+        return fallback
+    words = cleaned.split()[:3]
+    return " ".join(word[:1].upper() + word[1:].lower() for word in words)
+
+
+def stable_voice_gender(label: str) -> str:
+    seed = sum(ord(char) for char in label.lower())
+    return "woman" if seed % 2 == 0 else "man"
+
+
+def sanitize_choice(value: Any, allowed: set[str], fallback: str) -> str:
+    if isinstance(value, str):
+        candidate = value.strip().lower()
+        if candidate in allowed:
+            return candidate
+    return fallback
 
 
 def score_fact_entry(entry: dict[str, Any], label_candidates: list[str]) -> int:
@@ -106,6 +285,166 @@ def retrieve_facts(label_candidates: list[str], limit: int = 6) -> dict[str, Any
     }
 
 
+def tavily_key() -> str:
+    return (
+        os.environ.get("KIDA_TAVILY_API_KEY")
+        or os.environ.get("TAVILY_API_KEY")
+        or ""
+    ).strip()
+
+
+def is_tavily_configured() -> bool:
+    key = tavily_key()
+    return bool(key and "$(" not in key)
+
+
+def clean_text(value: Any, limit: int = 260) -> str:
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    return text[:limit].strip()
+
+
+def is_safe_fact_snippet(text: str) -> bool:
+    lower = text.lower()
+    if len(lower) < 18:
+        return False
+    if "http" in lower or "www." in lower:
+        return False
+    if any(word in lower for word in UNSAFE_FACT_WORDS):
+        return False
+    if any(word in lower for word in SHOPPING_WORDS):
+        return False
+    if lower.count("$") > 0:
+        return False
+    return True
+
+
+def split_fact_candidates(text: str) -> list[str]:
+    compact = clean_text(text, limit=1600)
+    parts = re.split(r"(?<=[.!?])\s+", compact)
+    return [clean_text(part.rstrip(".!?"), limit=180) for part in parts]
+
+
+def tavily_query_for(card: dict[str, Any]) -> str:
+    label = normalize_label(str(card.get("primaryLabel") or "object"))
+    brand = clean_text(card.get("brand"), limit=60)
+    visual_bits = [
+        clean_text(card.get("material"), limit=50),
+        clean_text(card.get("shape"), limit=50),
+        ", ".join(card.get("colors") or []),
+    ]
+    visual = " ".join(bit for bit in visual_bits if bit)
+    subject = " ".join(part for part in [brand, label, visual] if part).strip()
+    return f"kid friendly educational facts about {subject} safe everyday use"
+
+
+def tavily_retrieve_facts(card: dict[str, Any], limit: int = 4) -> dict[str, Any] | None:
+    if not is_tavily_configured():
+        return None
+
+    label = normalize_label(str(card.get("primaryLabel") or "object"))
+    if is_dangerous(label, card.get("safetyNotes", [])):
+        return None
+
+    query = tavily_query_for(card)
+    cache_key = query.lower()
+    cached = TAVILY_CACHE.get(cache_key)
+    if cached and time.time() - cached[0] < TAVILY_CACHE_TTL:
+        return cached[1]
+
+    payload = {
+        "query": query,
+        "search_depth": "basic",
+        "chunks_per_source": 2,
+        "max_results": 3,
+        "topic": "general",
+        "include_answer": False,
+        "include_raw_content": False,
+        "include_images": False,
+        "include_image_descriptions": False,
+        "include_favicon": False,
+        "auto_parameters": False,
+        "safe_search": True,
+    }
+    request = urllib.request.Request(
+        TAVILY_ENDPOINT,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {tavily_key()}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=TAVILY_TIMEOUT) as response:
+            data = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as error:
+        body = error.read().decode("utf-8", errors="replace")
+        print(f"Tavily failed {error.code}: {body[:600]}", file=sys.stderr)
+        return None
+    except Exception as error:
+        print(f"Tavily failed: {error}", file=sys.stderr)
+        return None
+
+    facts: list[str] = []
+    sources: list[dict[str, str]] = []
+    for result in data.get("results") or []:
+        title = clean_text(result.get("title"), limit=100)
+        url = clean_text(result.get("url"), limit=240)
+        content = result.get("content") or ""
+        if title and url:
+            sources.append({"title": title, "url": url})
+        for candidate in split_fact_candidates(content):
+            if is_safe_fact_snippet(candidate) and candidate not in facts:
+                facts.append(candidate)
+            if len(facts) >= limit:
+                break
+        if len(facts) >= limit:
+            break
+
+    if not facts:
+        return None
+
+    retrieved = {
+        "label": label,
+        "facts": facts[:limit],
+        "safetyNotes": [
+            "Ask a grown-up before opening, tasting, or using unfamiliar objects."
+        ],
+        "sources": sources[:3],
+        "source": "tavily",
+    }
+    TAVILY_CACHE[cache_key] = (time.time(), retrieved)
+    return retrieved
+
+
+def merge_retrieved_facts(local: dict[str, Any], tavily: dict[str, Any] | None) -> dict[str, Any]:
+    if not tavily:
+        return local
+
+    facts: list[str] = []
+    for fact in (tavily.get("facts") or []) + (local.get("facts") or []):
+        text = clean_text(fact, limit=180)
+        if text and text not in facts:
+            facts.append(text)
+
+    safety_notes: list[str] = []
+    for note in (local.get("safetyNotes") or []) + (tavily.get("safetyNotes") or []):
+        text = clean_text(note, limit=180)
+        if text and text not in safety_notes:
+            safety_notes.append(text)
+
+    merged = {
+        "label": tavily.get("label") or local.get("label") or "object",
+        "facts": facts[:6],
+        "safetyNotes": safety_notes[:4],
+        "source": "tavily+local",
+    }
+    if tavily.get("sources"):
+        merged["sources"] = tavily["sources"]
+    return merged
+
+
 def extract_json_object(text: str) -> dict[str, Any]:
     stripped = text.strip()
     try:
@@ -126,42 +465,47 @@ def build_prompt(detector: dict[str, Any]) -> str:
     # unverified against the client's coordinate convention. Target the object the child
     # framed (roughly centered / largest foreground object) qualitatively instead.
     return f"""
-You are Kida's careful visual identifier for a young child's learning app.
-Identify only the single main object the child framed — the large object near the center of the image. Ignore background and objects at the edges.
-Reply with ONE JSON object and nothing else: no prose, no markdown, no comments, no thinking.
-Describe only what you can clearly see. Never identify people. Never guess brand names or logos. Never invent text, numbers, or hidden parts. If you cannot clearly read text, return an empty readableText list — never guess letters.
-If you are unsure what the object is, set uncertainty to "high" and lower confidence; being unsure is safer than being wrong.
+You are Kida's careful visual identifier for a child's learning app.
+Look at the single main object the child framed near the image center. Ignore background objects, people, app UI, screen controls, and virtual AR overlays.
+Return ONLY one valid JSON object. No markdown, no comments, no thinking text.
 
-Detector hint (a guess from an on-device detector — verify it against what you see, do not just repeat it):
+Detector hint from the phone. Verify it visually, but use it when the image supports it:
 - label: {detector.get("label", "object")}
 - confidence: {detector.get("confidence", 0)}
 - alternatives: {", ".join(alternatives) if alternatives else "none"}
 
-Return JSON with exactly these keys:
-{{
-  "primaryLabel": "one common lowercase noun for the target object",
-  "confidence": 0.0,
-  "visualSummary": "one short factual sentence describing the target object's visible color, shape, material or parts",
-  "colors": ["dominant visible colors of the target object only"],
-  "material": "likely visible material such as plastic, metal, glass, paper, wood, fabric, ceramic, plant material, or null",
-  "shape": "simple visible shape such as round, rectangular, cylindrical, flat, boxy, soft, tall, thin, or null",
-  "readableText": ["visible words, letters, numbers, or symbols on the target object only"],
-  "likelyUses": ["safe everyday functions of this object, based on the object type and visible clues"],
-  "safetyNotes": ["child-safety caveats only if relevant to this object"],
-  "uncertainty": "low, medium, or high"
-}}
+Use exactly these keys: primaryLabel, characterName, confidence, visualSummary, colors, material, shape, brand, readableText, likelyUses, safetyNotes, uncertainty, personality, emotion, voiceGender, voiceFamily.
 
-Field rules:
-- primaryLabel must identify the target object, not the background.
-- confidence should be lower if the focus area is blurry, partially hidden, or ambiguous.
-- visualSummary should be concrete: color + shape/material/parts + object noun.
-- colors, readableText, likelyUses, and safetyNotes must each have at most 4 items.
-- readableText must be [] if no text is clearly readable.
-- material and shape may be null if not visually supported.
-- likelyUses should describe function, not personality.
-- safetyNotes should be [] when there is no clear child-safety issue.
-- Do not identify people. Do not guess brand names. Do not invent hidden parts.
-- Use simple labels such as bottle, cup, book, plant, toy, chair, table, bag, phone, laptop, pen, or object when appropriate.
+Rules:
+- primaryLabel is one common lowercase noun for the target object.
+- characterName is a fun, specific, kid-friendly name for this object character, 1-3 words in Title Case.
+- confidence is a number from 0 to 1.
+- visualSummary is one short factual sentence about visible color, shape, material, or visible parts.
+- colors, readableText, likelyUses, and safetyNotes are arrays with at most 4 strings.
+- brand is a short brand name only when a logo or readable brand text is clearly visible; otherwise null.
+- readableText is [] when no text is clearly readable.
+- material and shape may be null when not visible.
+- uncertainty is exactly one of: low, medium, high.
+- personality is exactly one of: boss, cool, fancy, sweet, cautious.
+- emotion is exactly one of: happy, sad, angry.
+- voiceGender is exactly one of: man, woman.
+- voiceFamily is exactly one of: bright, gentle, confident, careful.
+- Be the eyes only: describe what is visible. Do not explain general object knowledge beyond obvious safe everyday uses.
+- Never identify people. Never guess brands, hidden text, or hidden parts.
+- Choose personality by what the object is:
+  boss = authority, money, control, status, or important household items; examples: cash, wallet, credit card, safe/piggy bank, remote control, keys, calculator, phone, laptop.
+  cool = fun, sport, play, style, trend, activity, or entertainment; examples: ball, skateboard, sneakers, headphones, sunglasses, bicycle, controller, guitar.
+  fancy = formal, elegant, decorative, special-occasion, or treated carefully because it is nice; examples: fancy glassware, watch, perfume bottle, framed photo, trophy, vase, fancy tableware.
+  sweet = comfort, softness, care, affection, or nurturing; examples: pillow, blanket, stuffed toy, plush, teapot, baby bottle, tissue box, flower.
+  cautious = physically dangerous or adult-supervision objects; examples: scissors, knife, stove, electrical outlet, medicine bottle, lighter, chemical cleaner.
+- If the target looks dangerous, set personality="cautious", emotion="angry", voiceFamily="careful", and add a safety note that asks for a grown-up.
+- Choose voiceGender and voiceFamily as a stable character identity. Do not output raw TTS provider voice IDs.
+- Choose characterName from the object, color, shape, safe use, or personality. Avoid generic repeated names like "Sunny Bottle". Do not use a brand unless brand is visible.
+
+Example format:
+{{"primaryLabel":"bottle","characterName":"Sip Scout","confidence":0.82,"visualSummary":"A tall white bottle with a smooth cylindrical body.","colors":["white"],"material":"plastic or metal","shape":"tall cylinder","brand":null,"readableText":[],"likelyUses":["holding drinks"],"safetyNotes":[],"uncertainty":"low","personality":"cool","emotion":"happy","voiceGender":"woman","voiceFamily":"bright"}}
+
+Now return the JSON for this image.
 """.strip()
 
 
@@ -215,17 +559,25 @@ def run_fastvlm(image_bytes: bytes, detector: dict[str, Any], timeout: float) ->
 def fallback_card(detector: dict[str, Any]) -> dict[str, Any]:
     label = normalize_label(detector.get("label", "object"))
     confidence = float(detector.get("confidence") or 0)
+    personality = map_personality(label)
+    dangerous = personality == "cautious"
     return {
         "primaryLabel": label,
+        "characterName": character_name_for(label, personality),
         "confidence": confidence,
         "visualSummary": f"The local detector thinks this is a {label}.",
         "colors": [],
         "material": None,
         "shape": None,
+        "brand": None,
         "readableText": [],
         "likelyUses": [],
-        "safetyNotes": [],
+        "safetyNotes": ["Ask a grown-up before touching or using this."] if dangerous else [],
         "uncertainty": "high" if confidence < 0.45 else "medium",
+        "personality": personality,
+        "emotion": default_emotion(personality),
+        "voiceGender": stable_voice_gender(label),
+        "voiceFamily": voice_family_for_personality(personality),
     }
 
 
@@ -252,11 +604,55 @@ def sanitized_card(card: dict[str, Any], detector: dict[str, Any]) -> dict[str, 
                 ]
             merged[key] = items[:4]
 
-    for key in ["material", "shape", "uncertainty"]:
+    for key in ["material", "shape", "brand", "uncertainty"]:
         value = merged.get(key)
         merged[key] = str(value).strip() if value not in (None, "") else None
+    if merged.get("brand"):
+        brand = clean_text(merged["brand"], limit=60)
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 &'.-]{0,58}", brand):
+            brand = None
+        merged["brand"] = brand
 
     merged["visualSummary"] = str(merged.get("visualSummary") or fallback["visualSummary"]).strip()
+    danger = is_dangerous(merged["primaryLabel"], merged.get("safetyNotes", []))
+    explicit_personality = explicit_personality_for_label(
+        merged["primaryLabel"],
+        merged.get("safetyNotes", []),
+    )
+    personality_fallback = map_personality(merged["primaryLabel"], merged.get("safetyNotes", []))
+    merged["personality"] = sanitize_choice(
+        merged.get("personality"),
+        PERSONALITIES,
+        personality_fallback,
+    )
+    if explicit_personality:
+        merged["personality"] = explicit_personality
+    if danger:
+        merged["personality"] = "cautious"
+
+    emotion_fallback = default_emotion(merged["personality"])
+    merged["emotion"] = sanitize_choice(merged.get("emotion"), EMOTIONS, emotion_fallback)
+    if danger:
+        merged["emotion"] = "angry"
+
+    merged["voiceGender"] = sanitize_choice(
+        merged.get("voiceGender"),
+        VOICE_GENDERS,
+        stable_voice_gender(merged["primaryLabel"]),
+    )
+    family_fallback = voice_family_for_personality(merged["personality"])
+    merged["voiceFamily"] = sanitize_choice(
+        merged.get("voiceFamily"),
+        VOICE_FAMILIES,
+        family_fallback,
+    )
+    if danger:
+        merged["voiceFamily"] = "careful"
+    merged["characterName"] = sanitize_character_name(
+        merged.get("characterName"),
+        merged["primaryLabel"],
+        merged["personality"],
+    )
     return merged
 
 
@@ -273,6 +669,7 @@ class KidaVLMHandler(BaseHTTPRequestHandler):
                     "fastVLMConfigured": bool(os.environ.get("KIDA_FASTVLM_COMMAND", "").strip()),
                     "vlmSource": os.environ.get("KIDA_VLM_SOURCE", "local-vlm"),
                     "facts": len(FACT_ENTRIES),
+                    "tavilyConfigured": is_tavily_configured(),
                     "stickerBackend": _sticker_backend_available(),
                 }
             )
@@ -318,7 +715,11 @@ class KidaVLMHandler(BaseHTTPRequestHandler):
                 *(detector.get("alternatives") or []),
             ]
             retrieved = retrieve_facts([str(label) for label in label_candidates])
+            tavily_retrieved = tavily_retrieve_facts(card)
+            retrieved = merge_retrieved_facts(retrieved, tavily_retrieved)
             suggested = retrieved.pop("suggestedQuestions", [])
+            if tavily_retrieved:
+                source = f"{source}+tavily"
 
             self.send_json(
                 {

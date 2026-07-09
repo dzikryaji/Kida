@@ -3,7 +3,7 @@
 This local server lets the iPhone app use your Mac as the object-understanding box:
 
 ```text
-iPhone full frame + focus hint -> Mac VLM + Mac RAG -> ObjectIntelligenceCard + facts -> iPhone FoundationModels
+iPhone full frame + focus hint -> Mac VLM eyes + local/Tavily RAG -> ObjectIntelligenceCard + facts -> iPhone FoundationModels
 ```
 
 The server runs with Python standard library only. It returns Mac-side RAG facts immediately. If `KIDA_FASTVLM_COMMAND` is set, it calls that command for Apple FastVLM-style vision output.
@@ -42,8 +42,36 @@ curl http://127.0.0.1:8787/health
 Expected:
 
 ```json
-{"ok": true, "fastVLMConfigured": false, "facts": 11}
+{"ok": true, "fastVLMConfigured": false, "facts": 11, "tavilyConfigured": false}
 ```
+
+## Tavily fact enrichment (optional)
+
+Qwen should focus on being the eyes: label, visible color/shape/material, readable text,
+and visible brand. The server can then enrich the object once at scan time with kid-safe
+web facts from Tavily. Keep the Tavily key on the Mac/server, not in the iOS app:
+
+```sh
+export TAVILY_API_KEY=tvly-YOUR_KEY
+bash Server/run_mlx_server.sh
+```
+
+Or put it in a local secret file that is loaded by the launcher:
+
+```sh
+cp Server/.env.example Server/.env
+# edit Server/.env and set TAVILY_API_KEY
+bash Server/run_mlx_server.sh
+```
+
+`Server/.env`, `Server/.env.local`, and `Server/secrets.env` are gitignored.
+For convenience, the launcher also reads `TAVILY_API_KEY` from
+`Supporting/Secrets.xcconfig` if you already keep dev secrets there, but the iOS app
+does not need this key.
+
+When configured, `/object/understand` merges Tavily facts with local facts and the response
+`source` includes `+tavily`. Dangerous objects skip Tavily enrichment and stay on local
+safety facts.
 
 ## Sticker tier (BiRefNet, optional)
 
@@ -79,8 +107,10 @@ python3 -m venv .venv
 bash Server/run_mlx_server.sh
 ```
 
-By default the launcher uses `mlx-community/Qwen2.5-VL-3B-Instruct-4bit` for
-better object-card accuracy while keeping latency reasonable on Apple Silicon.
+By default the launcher uses `mlx-community/Qwen3-VL-4B-Instruct-3bit` for
+stronger object-card accuracy while still fitting on Apple Silicon. Set
+`KIDA_MLX_VLM_MODEL=mlx-community/Qwen2.5-VL-3B-Instruct-4bit` to run the older
+Qwen2.5 path.
 To use an exported Apple FastVLM model instead:
 
 ```sh
@@ -117,6 +147,7 @@ The command should print either:
 ```json
 {
   "primaryLabel": "bottle",
+  "characterName": "Sip Scout",
   "confidence": 0.82,
   "visualSummary": "blue plastic bottle with a cap",
   "colors": ["blue"],
@@ -135,6 +166,7 @@ or:
 {
   "objectIntelligence": {
     "primaryLabel": "bottle",
+    "characterName": "Sip Scout",
     "confidence": 0.82,
     "visualSummary": "blue plastic bottle with a cap",
     "colors": ["blue"],
@@ -175,6 +207,7 @@ Output:
 {
   "objectIntelligence": {
     "primaryLabel": "bottle",
+    "characterName": "Sip Scout",
     "confidence": 0.42,
     "visualSummary": "The local detector thinks this is a bottle.",
     "colors": [],

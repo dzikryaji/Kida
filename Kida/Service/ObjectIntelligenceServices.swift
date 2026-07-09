@@ -274,29 +274,39 @@ struct GeminiVisualUnderstandingProvider: VisualUnderstandingProviding {
         Return JSON only with exactly these keys:
         {
           "primaryLabel": "common object noun, lowercase",
+          "characterName": "short playful character name, 1-3 words",
           "confidence": 0.0,
           "visualSummary": "one short factual visual description",
           "colors": ["visible color names"],
           "material": "likely material or null",
           "shape": "simple shape description or null",
+          "brand": "visible brand/logo text or null",
           "readableText": ["short visible words or letters"],
           "likelyUses": ["safe everyday use"],
           "safetyNotes": ["child-safety caveat if relevant"],
           "uncertainty": "low, medium, or high",
           "personality": "one of: boss, cool, fancy, sweet, cautious",
-          "emotion": "one of: neutral, happy, curious, surprised, thinking, excited"
+          "emotion": "one of: happy, sad, angry",
+          "voiceGender": "one of: man, woman",
+          "voiceFamily": "one of: bright, gentle, confident, careful"
         }
 
         Use simple object labels such as bottle, cup, book, plant, toy, chair, table, bag, phone, laptop, pen, or object.
-        Do not guess brand names. Do not identify people. Do not claim invisible details.
+        Be the eyes only: describe what is visible. Do not explain general object knowledge beyond obvious safe everyday uses.
+        Do not guess brand names. Only set brand when readable brand/logo text is clearly visible.
+        Do not identify people. Do not claim invisible details.
         For confidence, use 0.0 to 1.0.
+        Give characterName a fun, specific, kid-friendly name inspired by the object, color, shape, use, or personality.
+        Avoid generic repeated names like "Sunny Bottle". Use Title Case. Do not use real people's names. Do not use a brand unless brand is visible.
         Choose personality by what the object is:
-        - boss: money, keys, remote, book, calculator, phone, laptop (status / control)
-        - cool: ball, skateboard, headphones, sneakers, bike (sport / play / style)
-        - fancy: perfume, jewelry, trophy, wine glass, vase (formal / elegant / special)
-        - sweet: plush toy, pillow, blanket, teapot, flower (soft / comfort / care)
-        - cautious: anything sharp, hot, electrical, or medicine (dangerous — needs an adult)
-        Choose emotion as the friendly mood that suits the object.
+        - boss: authority, money, control, status, or important household items; examples: cash, wallet, credit card, safe/piggy bank, remote control, keys, calculator, phone, laptop
+        - cool: fun, sport, play, style, trend, activity, or entertainment; examples: ball, skateboard, sneakers, headphones, sunglasses, bicycle, controller, guitar
+        - fancy: formal, elegant, decorative, special-occasion, or treated carefully because it is nice; examples: fancy glassware, watch, perfume bottle, framed photo, trophy, vase, fancy tableware
+        - sweet: comfort, softness, care, affection, or nurturing; examples: pillow, blanket, stuffed toy, plush, teapot, baby bottle, tissue box, flower
+        - cautious: physically dangerous or adult-supervision objects; examples: scissors, knife, stove, electrical outlet, medicine bottle, lighter, chemical cleaner
+        Choose emotion as the friendly mood that suits the object, using only happy, sad, or angry.
+        If the object looks sharp, hot, electrical, medicine-like, or chemical, set personality to cautious, emotion to angry, voiceFamily to careful, and add a safety note to ask a grown-up.
+        Choose voiceGender and voiceFamily as a stable character identity. Do not output raw TTS provider voice IDs.
         Keep arrays short: at most 4 items each.
         """
     }
@@ -324,7 +334,7 @@ struct GeminiVisualUnderstandingProvider: VisualUnderstandingProviding {
 private enum ObjectFrameJPEGData {
     static func make(
         from detectedObject: DetectedObject,
-        maxDimension: CGFloat = 1024,
+        maxDimension: CGFloat = 896,
         compressionQuality: CGFloat = 0.76
     ) -> Data? {
         guard let image = detectedObject.capturedImage else {
@@ -624,10 +634,12 @@ struct RetrievedObjectFacts: Codable, Equatable, Sendable {
     var label: String
     var facts: [String]
     var safetyNotes: [String]
+    var source: String?
+    var sources: [RetrievedFactSource]? = nil
 
     var promptContext: String {
         var lines = [
-            "Local object facts for \(label):"
+            "\(source ?? "Local") object facts for \(label):"
         ]
         lines.append(contentsOf: facts.map { "- \($0)" })
 
@@ -638,6 +650,11 @@ struct RetrievedObjectFacts: Codable, Equatable, Sendable {
 
         return lines.joined(separator: "\n")
     }
+}
+
+struct RetrievedFactSource: Codable, Equatable, Sendable {
+    var title: String
+    var url: String
 }
 
 private struct ObjectFactEntry: Sendable {
@@ -717,29 +734,19 @@ private struct VLMFocusRegion: Encodable {
     var description: String
 
     var promptDescription: String {
-        "\(description): normalized box x=\(Self.format(x)), y=\(Self.format(y)), width=\(Self.format(width)), height=\(Self.format(height)); origin is bottom-left."
+        "\(description): normalized guide box x=\(Self.format(x)), y=\(Self.format(y)), width=\(Self.format(width)), height=\(Self.format(height)); origin is bottom-left."
     }
 
-    static func make(from detectedObject: DetectedObject) -> VLMFocusRegion {
-        let sourceBox = detectedObject.segmentation?.boundingBox ?? detectedObject.boundingBox
-        let box = sourceBox.map { clamped($0) } ?? CGRect(x: 0.32, y: 0.40, width: 0.36, height: 0.36)
+    static func make(from _: DetectedObject) -> VLMFocusRegion {
+        // UI guide only: the JPEG upload remains the whole camera frame.
+        let box = CGRect(x: 0.32, y: 0.32, width: 0.36, height: 0.36)
         return VLMFocusRegion(
             x: Double(box.minX),
             y: Double(box.minY),
             width: Double(box.width),
             height: Double(box.height),
-            description: sourceBox == nil
-                ? "the center target box where the child framed the object"
-                : "the detected target object box"
+            description: "the fixed center guide where the child framed the object"
         )
-    }
-
-    private static func clamped(_ rect: CGRect) -> CGRect {
-        let box = rect.standardized.intersection(CGRect(x: 0, y: 0, width: 1, height: 1))
-        guard !box.isNull, !box.isEmpty else {
-            return CGRect(x: 0.32, y: 0.40, width: 0.36, height: 0.36)
-        }
-        return box
     }
 
     private static func format(_ value: Double) -> String {

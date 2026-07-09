@@ -25,7 +25,7 @@ struct LocalPersonaFactory {
                 objectLabel: label,
                 personality: "gentle nature friend who notices sunlight",
                 voiceProfile: .thoughtful,
-                emotionStyle: .curious,
+                emotionStyle: .happy,
                 greeting: "Hello, I am Pip the Plant. I grow slowly with light, water, and care.",
                 kidFriendlyFacts: [
                     "Many plants use sunlight to make their own food.",
@@ -39,7 +39,7 @@ struct LocalPersonaFactory {
                 objectLabel: label,
                 personality: "wise storyteller who loves questions",
                 voiceProfile: .thoughtful,
-                emotionStyle: .curious,
+                emotionStyle: .happy,
                 greeting: "Hi, I am Bibi Book. I carry stories, ideas, and little surprises on my pages.",
                 kidFriendlyFacts: [
                     "Books can teach facts or tell imaginary stories.",
@@ -67,7 +67,7 @@ struct LocalPersonaFactory {
                 objectLabel: label,
                 personality: "energetic explorer who carries drinks safely",
                 voiceProfile: .excited,
-                emotionStyle: .excited,
+                emotionStyle: .happy,
                 greeting: "Hi! I am Bop Bottle. I carry water so you can sip it wherever you go.",
                 kidFriendlyFacts: [
                     "A lid helps keep liquid from spilling.",
@@ -82,7 +82,7 @@ struct LocalPersonaFactory {
                 objectLabel: label,
                 personality: "friendly explorer who likes explaining everyday things",
                 voiceProfile: .cheerful,
-                emotionStyle: .curious,
+                emotionStyle: .happy,
                 greeting: "Hi! I am \(displayName). I am ready to explore what I do with you.",
                 kidFriendlyFacts: [
                     "Every object has a shape, a material, and a job.",
@@ -112,7 +112,7 @@ struct LocalPersonaFactory {
         if lowercased.contains("help") || lowercased.contains("do") {
             return ChatResponse(
                 text: "My job is simple: I help people every day as a \(label).",
-                emotion: .curious,
+                emotion: .happy,
                 voiceDirection: "curious, warm, explanatory",
                 rate: 0.44,
                 pitch: 1.12,
@@ -125,7 +125,7 @@ struct LocalPersonaFactory {
             let fact = persona.kidFriendlyFacts.first ?? "If you look carefully, every object can teach you something."
             return ChatResponse(
                 text: fact,
-                emotion: .excited,
+                emotion: .happy,
                 voiceDirection: "bright, excited, kid-friendly",
                 rate: 0.5,
                 pitch: 1.25,
@@ -137,7 +137,7 @@ struct LocalPersonaFactory {
         if lowercased.contains("sad") || lowercased.contains("angry") || lowercased.contains("scared") {
             return ChatResponse(
                 text: "Big feelings are okay. Let us breathe slowly, then keep learning.",
-                emotion: .thinking,
+                emotion: .sad,
                 voiceDirection: "slow, gentle, reassuring",
                 rate: 0.39,
                 pitch: 1.02,
@@ -148,7 +148,7 @@ struct LocalPersonaFactory {
 
         return ChatResponse(
             text: "Great question. Look at my shape and material for clues.",
-            emotion: .curious,
+            emotion: .happy,
             voiceDirection: "curious, friendly, thoughtful",
             rate: 0.43,
             pitch: 1.12,

@@ -34,7 +34,7 @@ class ARSessionViewModel: ObservableObject {
     private let bubbleAnimationDuration: TimeInterval = 0.3
     private let bubbleAppearDelayAfterFace: TimeInterval = 0.2
     private let bubbleSlideOffset: Float = 0.03
-    private var bubbleYOffset: Float = 0.1
+    private let bubbleYOffset: Float = FaceEntityFactory.eyebrowVerticalOffset + 0.10
 
     init() {
         // Fire-and-forget: warm FaceEntityFactory's shared base-face
@@ -142,8 +142,7 @@ class ARSessionViewModel: ObservableObject {
     }
     
     func changeExpression(to expression: FaceEntityFactory.Expression) {
-        guard expression != currentExpression else { return }
-
+        let shouldAnimate = expression != currentExpression
         currentExpression = expression
 
         guard let face = currentFace else { return }
@@ -151,7 +150,7 @@ class ARSessionViewModel: ObservableObject {
         FaceEntityFactory.setExpression(
             expression,
             on: face,
-            duration: 0.25
+            duration: shouldAnimate ? 0.25 : 0
         )
     }
 

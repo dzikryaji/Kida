@@ -2,6 +2,11 @@ import Foundation
 
 enum ObjectLabelNormalizer {
     private static let aliases: [(keywords: [String], label: String)] = [
+        (["perfume bottle", "cologne bottle"], "perfume bottle"),
+        (["medicine bottle", "pill bottle"], "medicine bottle"),
+        (["baby bottle"], "baby bottle"),
+        (["tissue box"], "tissue box"),
+        (["wine glass", "champagne glass"], "wine glass"),
         (["coffee mug", "mug", "cup", "teacup", "goblet"], "cup"),
         (["water bottle", "bottle", "flask"], "bottle"),
         (["book", "notebook", "binder", "comic book"], "book"),
@@ -38,4 +43,3 @@ private extension String {
         isEmpty ? nil : self
     }
 }
-

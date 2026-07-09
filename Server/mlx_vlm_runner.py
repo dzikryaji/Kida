@@ -13,8 +13,11 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
+
+from PIL import Image, ImageOps
 
 
 KNOWN_LABELS = [
@@ -39,6 +42,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--prompt-file", "--prompt", dest="prompt_file", required=True)
     parser.add_argument("--max-tokens", type=int, default=int(os.environ.get("KIDA_MLX_MAX_TOKENS", "384")))
     parser.add_argument("--temp", type=float, default=float(os.environ.get("KIDA_MLX_TEMP", "0.0")))
+    parser.add_argument("--image-max-edge", type=int, default=int(os.environ.get("KIDA_MLX_IMAGE_MAX_EDGE", "1280")))
+    parser.add_argument(
+        "--thinking-mode",
+        choices=("enabled", "disabled", "adaptive"),
+        default=os.environ.get("KIDA_MLX_THINKING_MODE"),
+        help="Pass through to newer mlx-vlm chat templates. Defaults to disabled for Qwen3-VL.",
+    )
     return parser.parse_args()
 
 
@@ -47,43 +57,82 @@ def run_mlx_generate(args: argparse.Namespace) -> str:
         raise SystemExit("Missing --model or KIDA_MLX_VLM_MODEL.")
 
     prompt = Path(args.prompt_file).read_text(encoding="utf-8")
-    command = [
-        sys.executable,
-        "-m",
-        "mlx_vlm.generate",
-        "--model",
-        args.model,
-        "--image",
-        args.image,
-        "--prompt",
-        prompt,
-        "--max-tokens",
-        str(args.max_tokens),
-        "--temperature",
-        str(args.temp),
-        "--no-verbose",
-    ]
 
-    completed = run_command(command)
-    if completed.returncode == 0:
-        return completed.stdout
+    with tempfile.TemporaryDirectory(prefix="kida-mlx-vlm-") as temp_dir:
+        image_path = prepare_image_for_mlx(args.image, Path(temp_dir), args.image_max_edge)
+        command = [
+            sys.executable,
+            "-m",
+            "mlx_vlm.generate",
+            "--model",
+            args.model,
+            "--image",
+            image_path,
+            "--prompt",
+            prompt,
+            "--max-tokens",
+            str(args.max_tokens),
+            "--temperature",
+            str(args.temp),
+            "--no-verbose",
+        ]
+        thinking_mode = args.thinking_mode
+        if thinking_mode is None and "qwen3-vl" in args.model.lower():
+            thinking_mode = "disabled"
+        if thinking_mode:
+            command.extend(["--thinking-mode", thinking_mode])
 
-    combined = f"{completed.stdout}\n{completed.stderr}"
-    if "--no-verbose" in combined and "unrecognized" in combined.lower():
-        retry_command = [part for part in command if part != "--no-verbose"]
-        completed = run_command(retry_command)
+        completed = run_command(command)
         if completed.returncode == 0:
             return completed.stdout
-        combined = f"{completed.stdout}\n{completed.stderr}"
 
-    if "--temp" in combined and "unrecognized" in combined.lower():
-        retry_command = command[:-2] + ["--temperature", str(args.temp)]
-        completed = run_command(retry_command)
-        if completed.returncode == 0:
-            return completed.stdout
         combined = f"{completed.stdout}\n{completed.stderr}"
+        unsupported_flags = ["--thinking-mode", "--no-verbose"]
+        for unsupported in unsupported_flags:
+            if unsupported in combined and "unrecognized" in combined.lower():
+                retry_command = remove_flag(command, unsupported, has_value=unsupported == "--thinking-mode")
+                completed = run_command(retry_command)
+                if completed.returncode == 0:
+                    return completed.stdout
+                command = retry_command
+                combined = f"{completed.stdout}\n{completed.stderr}"
 
-    raise RuntimeError(combined.strip() or "mlx-vlm failed without output.")
+        if "--temperature" in combined and "unrecognized" in combined.lower():
+            retry_command = remove_flag(command, "--temperature", has_value=True)
+            retry_command.extend(["--temp", str(args.temp)])
+            completed = run_command(retry_command)
+            if completed.returncode == 0:
+                return completed.stdout
+            combined = f"{completed.stdout}\n{completed.stderr}"
+
+        raise RuntimeError(combined.strip() or "mlx-vlm failed without output.")
+
+
+def prepare_image_for_mlx(image_path: str, temp_dir: Path, max_edge: int) -> str:
+    if max_edge <= 0:
+        return image_path
+
+    image = Image.open(image_path)
+    image = ImageOps.exif_transpose(image).convert("RGB")
+    image.thumbnail((max_edge, max_edge), Image.Resampling.LANCZOS)
+
+    prepared_path = temp_dir / "image.jpg"
+    image.save(prepared_path, "JPEG", quality=92, optimize=True)
+    return str(prepared_path)
+
+
+def remove_flag(command: list[str], flag: str, has_value: bool) -> list[str]:
+    cleaned: list[str] = []
+    skip_next = False
+    for part in command:
+        if skip_next:
+            skip_next = False
+            continue
+        if part == flag:
+            skip_next = has_value
+            continue
+        cleaned.append(part)
+    return cleaned
 
 
 def run_command(command: list[str]) -> subprocess.CompletedProcess[str]:
@@ -130,6 +179,7 @@ def strip_markdown_fences(text: str) -> str:
 def extract_partial_card(text: str) -> dict[str, Any] | None:
     keys = [
         "primaryLabel",
+        "characterName",
         "confidence",
         "visualSummary",
         "colors",
@@ -194,6 +244,7 @@ def summarize_text_output(text: str) -> dict[str, Any]:
     return sanitize_card(
         {
             "primaryLabel": label,
+            "characterName": None,
             "confidence": 0.55 if label != "object" else 0.35,
             "visualSummary": summary,
             "colors": [],
@@ -226,6 +277,7 @@ def sanitize_card(card: dict[str, Any], raw_text: str) -> dict[str, Any]:
 
     return {
         "primaryLabel": primary_label,
+        "characterName": clean_optional(card.get("characterName") or card.get("character_name")),
         "confidence": confidence,
         "visualSummary": visual_summary,
         "colors": clean_list(card.get("colors")),

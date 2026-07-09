@@ -38,7 +38,9 @@ struct ARViewContainer: UIViewRepresentable {
     func updateUIView(_ uiView: ARView, context: Context) {
         // Ignore taps while a scan is already placed or a segmentation is
         // in flight, so a second tap can't race the first one.
-        let busy = scanViewModel.isScanning || scanViewModel.placedAnchor != nil
+        let busy = scanViewModel.isScanning
+            || scanViewModel.isUnderstandingObject
+            || scanViewModel.placedAnchor != nil
         context.coordinator.tapGesture?.isEnabled = !busy
     }
 
@@ -57,17 +59,17 @@ struct ARViewContainer: UIViewRepresentable {
         @objc func handleTap(_ recognizer: UITapGestureRecognizer) {
             guard let arView = recognizer.view as? ARView else { return }
 
-            // We need the camera frame at the moment of the tap so SAM can
-            // segment the object the child actually pointed at.
+            // The visible scan box is a fixed center guide. A tap only starts the scan;
+            // segmentation/placement target the center of the camera view.
             guard let frame = arView.session.currentFrame else {
                 print("No current AR frame available, skipping segmentation")
                 return
             }
 
-            let tapLocation = recognizer.location(in: arView)
+            let guideCenter = CGPoint(x: arView.bounds.midX, y: arView.bounds.midY)
 
             scanViewModel.placeObject(
-                at: tapLocation,
+                at: guideCenter,
                 pixelBuffer: frame.capturedImage,
                 viewSize: arView.bounds.size,
                 in: arView

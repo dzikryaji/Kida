@@ -1,5 +1,8 @@
 # Secrets — NEVER commit (contains API keys)
 Secrets.xcconfig
+Server/.env
+Server/.env.local
+Server/secrets.env
 
 # Xcode user state
 *.xcuserstate
