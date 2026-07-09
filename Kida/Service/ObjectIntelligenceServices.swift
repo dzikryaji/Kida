@@ -136,6 +136,67 @@ struct MacVLMVisualUnderstandingProvider: VisualUnderstandingProviding {
     }
 }
 
+struct MacObjectQuestionRetrievalProvider: Sendable {
+    nonisolated var isAvailable: Bool {
+        configuration != nil
+    }
+
+    private let configuration: MacVLMConfiguration?
+
+    init(configuration: MacVLMConfiguration? = MacVLMConfiguration.load()) {
+        self.configuration = configuration
+    }
+
+    func retrieveFacts(
+        searchQuestion: String,
+        childQuestion: String,
+        persona: ObjectPersona
+    ) async throws -> RetrievedObjectFacts {
+        guard let configuration else {
+            throw MacVLMVisualUnderstandingError.missingConfiguration
+        }
+
+        let url = configuration.baseURL.appendingPathComponent("object/retrieve")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = min(max(configuration.timeout, 8), 30)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("true", forHTTPHeaderField: "ngrok-skip-browser-warning")
+
+        if let token = configuration.token {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        request.httpBody = try JSONEncoder().encode(
+            MacVLMQuestionRetrievalRequest(
+                searchQuestion: searchQuestion,
+                childQuestion: childQuestion,
+                objectLabel: persona.objectLabel,
+                objectIntelligence: persona.objectIntelligence
+            )
+        )
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw MacVLMVisualUnderstandingError.badStatus(-1, "No HTTP response.")
+        }
+
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            let message = String(data: data, encoding: .utf8) ?? "No error body."
+            throw MacVLMVisualUnderstandingError.badStatus(httpResponse.statusCode, message)
+        }
+
+        let serverResponse = try JSONDecoder().decode(MacVLMQuestionRetrievalResponse.self, from: data)
+        AIDebugLogger.trace("AFM tool retrieval response", """
+        source=\(serverResponse.source ?? "unknown")
+        tavilyConfigured=\(serverResponse.tavilyConfigured ?? false)
+        searchQuestion=\(serverResponse.searchQuestion ?? searchQuestion)
+        \(serverResponse.retrievedFacts.promptContext)
+        """)
+        return serverResponse.retrievedFacts
+    }
+}
+
 struct MacVLMConfiguration: Sendable {
     var baseURL: URL
     var token: String?
@@ -285,7 +346,7 @@ struct GeminiVisualUnderstandingProvider: VisualUnderstandingProviding {
           "likelyUses": ["safe everyday use"],
           "safetyNotes": ["child-safety caveat if relevant"],
           "uncertainty": "low, medium, or high",
-          "personality": "one of: boss, cool, fancy, sweet, cautious",
+          "personality": "one of: boss, cool, fancy, caregiver, cautious",
           "emotion": "one of: happy, sad, angry",
           "voiceGender": "one of: man, woman",
           "voiceFamily": "one of: bright, gentle, confident, careful"
@@ -297,15 +358,15 @@ struct GeminiVisualUnderstandingProvider: VisualUnderstandingProviding {
         Do not identify people. Do not claim invisible details.
         For confidence, use 0.0 to 1.0.
         Give characterName a fun, specific, kid-friendly name inspired by the object, color, shape, use, or personality.
-        Avoid generic repeated names like "Sunny Bottle". Use Title Case. Do not use real people's names. Do not use a brand unless brand is visible.
+        Avoid generic repeated names like "Sunny Bottle". Do not use a different object word in the name, such as calling a fork a toaster. Use Title Case. Do not use real people's names. Do not use a brand unless brand is visible.
         Choose personality by what the object is:
         - boss: authority, money, control, status, or important household items; examples: cash, wallet, credit card, safe/piggy bank, remote control, keys, calculator, phone, laptop
         - cool: fun, sport, play, style, trend, activity, or entertainment; examples: ball, skateboard, sneakers, headphones, sunglasses, bicycle, controller, guitar
         - fancy: formal, elegant, decorative, special-occasion, or treated carefully because it is nice; examples: fancy glassware, watch, perfume bottle, framed photo, trophy, vase, fancy tableware
-        - sweet: comfort, softness, care, affection, or nurturing; examples: pillow, blanket, stuffed toy, plush, teapot, baby bottle, tissue box, flower
-        - cautious: physically dangerous or adult-supervision objects; examples: scissors, knife, stove, electrical outlet, medicine bottle, lighter, chemical cleaner
+        - caregiver: comfort, softness, care, affection, or nurturing; examples: pillow, blanket, stuffed toy, plush, teapot, baby bottle, tissue box, flower
+        - cautious: physically dangerous or adult-supervision objects; examples: fork, scissors, knife, stove, hot kettle, electrical outlet, medicine bottle, lighter, chemical cleaner, drill, broken glass
         Choose emotion as the friendly mood that suits the object, using only happy, sad, or angry.
-        If the object looks sharp, hot, electrical, medicine-like, or chemical, set personality to cautious, emotion to angry, voiceFamily to careful, and add a safety note to ask a grown-up.
+        If the object looks sharp, pointy, hot, burnable, electrical, medicine-like, chemical, tool-like, broken/shard-like, or says it needs adult supervision, set personality to cautious, emotion to angry, voiceFamily to careful, and add a safety note to ask a grown-up.
         Choose voiceGender and voiceFamily as a stable character identity. Do not output raw TTS provider voice IDs.
         Keep arrays short: at most 4 items each.
         """
@@ -570,7 +631,9 @@ struct ObjectFactStore: Sendable {
         )
     ]
 
-    func retrieve(
+    nonisolated init() {}
+
+    nonisolated func retrieve(
         for persona: ObjectPersona,
         question: String,
         limit: Int = 4
@@ -583,7 +646,7 @@ struct ObjectFactStore: Sendable {
         return retrieve(labelCandidates: labelCandidates, question: question, limit: limit)
     }
 
-    func retrieve(
+    nonisolated func retrieve(
         for detectedObject: DetectedObject,
         question: String? = nil,
         limit: Int = 4
@@ -596,7 +659,7 @@ struct ObjectFactStore: Sendable {
         return retrieve(labelCandidates: labelCandidates, question: question ?? "", limit: limit)
     }
 
-    private func retrieve(
+    nonisolated private func retrieve(
         labelCandidates: [String],
         question: String,
         limit: Int
@@ -637,7 +700,7 @@ struct RetrievedObjectFacts: Codable, Equatable, Sendable {
     var source: String?
     var sources: [RetrievedFactSource]? = nil
 
-    var promptContext: String {
+    nonisolated var promptContext: String {
         var lines = [
             "\(source ?? "Local") object facts for \(label):"
         ]
@@ -663,7 +726,7 @@ private struct ObjectFactEntry: Sendable {
     var facts: [String]
     var safetyNotes: [String]
 
-    func score(for labelCandidates: [String]) -> Int {
+    nonisolated func score(for labelCandidates: [String]) -> Int {
         let terms = Set(([label] + aliases).map(ObjectLabelNormalizer.normalize))
         return labelCandidates.reduce(0) { score, candidate in
             terms.contains(candidate) || terms.contains(where: { candidate.contains($0) || $0.contains(candidate) })
@@ -672,7 +735,7 @@ private struct ObjectFactEntry: Sendable {
         }
     }
 
-    func rankedFacts(for question: String, limit: Int) -> [String] {
+    nonisolated func rankedFacts(for question: String, limit: Int) -> [String] {
         let queryTokens = Set(Self.tokens(in: question))
         guard !queryTokens.isEmpty else {
             return Array(facts.prefix(limit))
@@ -695,7 +758,7 @@ private struct ObjectFactEntry: Sendable {
         return Array(ranked.prefix(limit).map(\.fact))
     }
 
-    private static func tokens(in text: String) -> [String] {
+    nonisolated private static func tokens(in text: String) -> [String] {
         text.lowercased()
             .split { !$0.isLetter && !$0.isNumber }
             .map(String.init)
@@ -711,6 +774,13 @@ private struct GeminiGenerateContentRequest: Encodable {
 private struct MacVLMObjectUnderstandingRequest: Encodable {
     var image: MacVLMImagePayload
     var detector: MacVLMDetectorHint
+}
+
+private struct MacVLMQuestionRetrievalRequest: Encodable {
+    var searchQuestion: String
+    var childQuestion: String
+    var objectLabel: String
+    var objectIntelligence: ObjectIntelligenceCard?
 }
 
 private struct MacVLMImagePayload: Encodable {
@@ -759,6 +829,13 @@ private struct MacVLMObjectUnderstandingResponse: Decodable {
     var retrievedFacts: RetrievedObjectFacts?
     var suggestedQuestions: [String]?
     var source: String?
+}
+
+private struct MacVLMQuestionRetrievalResponse: Decodable {
+    var retrievedFacts: RetrievedObjectFacts
+    var source: String?
+    var searchQuestion: String?
+    var tavilyConfigured: Bool?
 }
 
 private struct GeminiContent: Encodable {

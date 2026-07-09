@@ -66,6 +66,10 @@ final class CollectionViewModel {
         repository.segmentedImageData(for: item)
     }
 
+    func displayImageData(for item: ScannedItem) -> Data? {
+        repository.segmentedImageData(for: item) ?? repository.imageData(for: item)
+    }
+
     func updateItem(
         _ item: ScannedItem,
         newImageData: Data? = nil,

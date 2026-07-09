@@ -10,6 +10,7 @@ import SwiftUI
 struct SaveConfirmationOverlay: View {
     let itemName: String
     let itemImage: Image
+    var isSaving: Bool = false
     let onYes: () -> Void
     let onNotNow: () -> Void
 
@@ -28,14 +29,23 @@ struct SaveConfirmationOverlay: View {
 
                 VStack(spacing: 12) {
                     Button(action: onYes) {
-                        Text("Yes")
-                            .font(.headline)
-                            .foregroundStyle(Color.purple)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .background(Color.white)
-                            .clipShape(Capsule())
+                        HStack(spacing: 10) {
+                            if isSaving {
+                                ProgressView()
+                                    .controlSize(.small)
+                                    .tint(Color.purple)
+                            }
+
+                            Text(isSaving ? "Making sticker..." : "Yes")
+                                .font(.headline)
+                        }
+                        .foregroundStyle(Color.purple)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Color.white)
+                        .clipShape(Capsule())
                     }
+                    .disabled(isSaving)
 
                     Button(action: onNotNow) {
                         Text("Not Now")
@@ -46,6 +56,8 @@ struct SaveConfirmationOverlay: View {
                             .background(Color.white.opacity(0.2))
                             .clipShape(Capsule())
                     }
+                    .disabled(isSaving)
+                    .opacity(isSaving ? 0.55 : 1)
                 }
                 .padding(.horizontal, 24)
                 .padding(.bottom, 24)

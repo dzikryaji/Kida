@@ -86,6 +86,9 @@ so the base server stays dependency-free. Enable it:
 Model is chosen via `KIDA_STICKER_MODEL` (default `birefnet-general-lite` for ~1-2 s;
 use `birefnet-general` for best quality but ~10 s+). Request/response:
 
+The server warms the sticker backend in the background on startup so the first Save does
+not pay the model-load cost. Set `KIDA_STICKER_WARMUP=0` to disable this.
+
 ```jsonc
 // POST /object/sticker   { "image": { "mimeType": "image/jpeg", "data": "<base64>" } }
 // -> { "sticker": { "mimeType": "image/png", "data": "<base64>" }, "width": W, "height": H }

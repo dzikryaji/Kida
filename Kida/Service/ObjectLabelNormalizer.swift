@@ -1,7 +1,7 @@
 import Foundation
 
 enum ObjectLabelNormalizer {
-    private static let aliases: [(keywords: [String], label: String)] = [
+    nonisolated private static let aliases: [(keywords: [String], label: String)] = [
         (["perfume bottle", "cologne bottle"], "perfume bottle"),
         (["medicine bottle", "pill bottle"], "medicine bottle"),
         (["baby bottle"], "baby bottle"),
@@ -20,7 +20,7 @@ enum ObjectLabelNormalizer {
         (["pen", "pencil", "marker"], "pen")
     ]
 
-    static func normalize(_ identifier: String) -> String {
+    nonisolated static func normalize(_ identifier: String) -> String {
         let lowercased = identifier.lowercased()
         for alias in aliases {
             if alias.keywords.contains(where: { lowercased.contains($0) }) {
@@ -39,7 +39,7 @@ enum ObjectLabelNormalizer {
 }
 
 private extension String {
-    var nonEmpty: String? {
+    nonisolated var nonEmpty: String? {
         isEmpty ? nil : self
     }
 }

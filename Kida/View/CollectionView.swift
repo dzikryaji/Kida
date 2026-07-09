@@ -69,14 +69,15 @@ struct CollectionView: View {
                     ScrollView {
                         LazyVGrid(columns: columns, spacing: 24) {
                             ForEach(viewModel?.items ?? []) { item in
-                                let uiImage = viewModel?.imageData(for: item).flatMap(UIImage.init)
+                                let rawImage = viewModel?.imageData(for: item).flatMap(UIImage.init)
+                                let stickerImage = viewModel?.segmentedImageData(for: item).flatMap(UIImage.init)
 
                                 NavigationLink {
-                                    CollectionDetail(item: item, image: uiImage)
+                                    CollectionDetail(item: item, rawImage: rawImage, stickerImage: stickerImage)
                                         .onAppear { isDetailPresented = true }
                                         .onDisappear { isDetailPresented = false }
                                 } label: {
-                                    CollectionCard(item: item, image: uiImage)
+                                    CollectionCard(item: item, rawImage: rawImage, stickerImage: stickerImage)
                                 }
                                 .buttonStyle(.plain)
                                 .contextMenu {
