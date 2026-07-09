@@ -22,6 +22,7 @@ struct CollectionView: View {
     @Binding var isDetailPresented: Bool
     @Environment(\.modelContext) private var modelContext
     @State private var viewModel: CollectionViewModel?
+    @State private var itemToDelete: ScannedItem?
     
     private let columns = [
         GridItem(.flexible(), spacing: 12),
@@ -59,6 +60,23 @@ struct CollectionView: View {
                 .padding()
                 
                 
+                if viewModel?.items.isEmpty ?? true {
+                    VStack(spacing: 12) {
+                        Image(systemName: "camera.viewfinder")
+                            .font(.system(size: 48))
+                            .foregroundStyle(Color(red: 0.31, green: 0.25, blue: 0.85).opacity(0.5))
+
+                        Text("Your collection is empty")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundStyle(.black.opacity(0.7))
+
+                        Text("Point your camera at an object\nto discover its story.")
+                            .font(.system(size: 14))
+                            .foregroundStyle(.black.opacity(0.5))
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
                 ScrollView {
                     LazyVGrid(columns: columns, spacing: 24) {
                         ForEach(viewModel?.items ?? []) { item in
@@ -72,9 +90,19 @@ struct CollectionView: View {
                                 CollectionCard(item: item, image: uiImage)
                             }
                             .buttonStyle(.plain)
+                            .contextMenu {
+                                Button(role: .destructive) {
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                        itemToDelete = item
+                                    }
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            }
                         }
                     }
                     .padding(.horizontal, 16)
+                }
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -85,7 +113,7 @@ struct CollectionView: View {
             
             .onAppear {
                 //                guard viewModel == nil else { return }   // build once
-                //                
+                //
                 //                    .onAppear {
                 if viewModel == nil {
                     let repository = ScannedItemRepository(modelContext: modelContext)
@@ -112,10 +140,28 @@ struct CollectionView: View {
                 //         date: .now.addingTimeInterval(-86400)   // yesterday, tests sort
                 //     )
             }
-            
+            .overlay {
+                if let item = itemToDelete {
+                    DeleteConfirmationOverlay(
+                        itemName: item.objectName,
+                        onDelete: {
+                            viewModel?.deleteItem(item)
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                itemToDelete = nil
+                            }
+                        },
+                        onCancel: {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                itemToDelete = nil
+                            }
+                        }
+                    )
+                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                }
+            }
         }
     }
-}
+
 }
 
 #Preview {
