@@ -7,17 +7,19 @@
 
 We are a team of 5
 
-- Andrian
-- Erin
+**Coder:**
+- Aji
 - Imelda
 - Richard
-- Aji
+
+
+**Designer:**
+- Andrian
+- Erin
 
 ---
 
 ## Starting Assumption
-
-*What did you assume, before any real exploration (start of investigation phase)? Be honest, including if your assumption is basically a guess. Write it and move on.*
 
 **We think we'll end up using:**
 
@@ -130,31 +132,24 @@ We still keep AVSpeechSynthesizer as the Apple fallback, but for better characte
 *(delete this whole section if you're a game team)*
 ### About the Frameworks
 
-*Does your use case genuinely need both frameworks working together, or could it work with just your main one?*
-[ ]
+
+Yeah, we really do need them working together. Vision / Core ML gives us the object mask, and ARKit uses that mask to figure out where the eyes and mouth should go on the real object. Take segmentation away and the face lands in the wrong spot; take AR away and all we have is a mask with no character. Same story on the conversation side: Speech turns the kid's question into text, the language model answers in the object's personality, and TTS speaks it while the AR mouth moves along. Pull out any one of them and the "this thing is alive" illusion falls apart.
+
 ### About Accessibility and Localization
 
-*What did you decide to support, what did you decide not to, and why? "We didn't localize" is a fine answer if you can say why, "we didn't think about it" is not.*
-[ ]
+
+Kids can either talk to the object or type to it, so a child who can't (or doesn't want to) speak isn't left out. Answers also show up as text on screen, not just voice, so nothing depends on hearing alone.
+
+We didn't localize. The speech recognition, the prompts, and the ElevenLabs character voices are all tuned for English, so adding a language means re-checking that whole voice pipeline. With our timeline, we'd rather make one language feel alive than make several feel flat.
+
 ### About Privacy
 
-*What data does your app actually need? What happens in your app when the user says no to a permission?*
-[ ]
 
----
-## Game Track Addendum
+Kida asks for four permissions, and each one maps to a single feature:
 
-*(delete this whole section if you're an app team)*
-### About the Mechanics
+- **Camera** — to spot objects and put the animated face on them. This is the only one the app really can't live without; no camera, no scanning.
+- **Microphone + Speech Recognition** — so a kid can ask the object a question out loud. Say no to either and voice input just turns off; the kid can type the question instead.
+- **Local Network** — to send the selected object image to a Mac on the same network for understanding, instead of a cloud service. Say no and that path is off.
 
-*Describe the core mechanic that emerged from your pairing. If this reads like a list of frameworks, it's not done yet.*
-[ ]
-### About Player Experience
-
-*Player Experience, before and after****:*** *Write the sentence you started with, and the one you ended with: "[Mechanic] makes [moment] feel [feeling], instead of [feeling without it]."*
-Before: [ ] After: [ ]
-### About the Game Engine
-
-*If you used Unity or Godot****:*** *Exporting to iOS isn't the same as using an Apple framework. How did you bridge into a genuine Apple framework (GameKit, HealthKit, etc.) from the native side?*
-[ ]
+We don't store or upload anything beyond that. Detection and segmentation run on-device with Core ML, and image understanding stays on the local network instead of going to the cloud.
 

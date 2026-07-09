@@ -1,4 +1,4 @@
-//
+////
 //  ScanViewModel.swift
 //  Kida
 //
@@ -23,8 +23,8 @@ class ScanViewModel: ObservableObject {
 
     @Published private(set) var placedAnchor: AnchorEntity?
     @Published private(set) var isScanning: Bool = false
-    @Published private(set) var currentPersonality: FaceEntityFactory.Personality = .caregiver
-    @Published private(set) var currentExpression: FaceEntityFactory.Expression = .sad
+    @Published private(set) var currentPersonality: CharacterEntityFactory.Personality = .caregiver
+    @Published private(set) var currentExpression: CharacterEntityFactory.Expression = .sad
     @Published private(set) var capturedImageData: Data?
     @Published private(set) var capturedStickerImageData: Data?
 
@@ -45,6 +45,11 @@ class ScanViewModel: ObservableObject {
 
     private weak var currentFace: Entity?
     private weak var currentBubble: Entity?
+    /// The one entity that owns both the face and the bubble for the
+    /// currently placed object -- see `CharacterEntityFactory`. Replaces
+    /// the old `currentPresentation`, which parented face and bubble as
+    /// two independently-billboarded siblings rather than as parts of a
+    /// single character.
     private weak var currentCharacter: Entity?
     private var currentFaceHasPersonalityAccessory = false
     private var faceBuildGeneration = 0
@@ -58,7 +63,7 @@ class ScanViewModel: ObservableObject {
     private let bubbleAnimationDuration: TimeInterval = 0.3
     private let bubbleAppearDelayAfterFace: TimeInterval = 0.2
     private let bubbleSlideOffset: Float = 0.03
-    private let bubbleYOffset: Float = FaceEntityFactory.eyebrowVerticalOffset + 0.10
+    private let bubbleYOffset: Float = CharacterEntityFactory.eyebrowVerticalOffset + 0.10
     private let bubbleZOffset: Float = 0.025
 
     var collectionItemName: String {
@@ -115,7 +120,7 @@ class ScanViewModel: ObservableObject {
         
         Task {
             await self.segmenter.prepare()
-            await FaceEntityFactory.preloadBaseFace() 
+            await CharacterEntityFactory.preloadBaseFace()
         }
     }
 
@@ -209,7 +214,7 @@ class ScanViewModel: ObservableObject {
         faceBuildGeneration += 1
         personaBuildGeneration += 1
         if let currentFace {
-            FaceEntityFactory.stopAnimations(for: currentFace)
+            CharacterEntityFactory.stopAnimations(for: currentFace)
         }
         stopThinkingBubbleAnimation()
         anchor.removeFromParent()
@@ -263,14 +268,18 @@ class ScanViewModel: ObservableObject {
     /// placed, the current face is torn down and the new one is built and
     /// popped in immediately. If nothing is placed yet, this just changes
     /// which personality the *next* placement will use.
-    func changePersonality(to personality: FaceEntityFactory.Personality) {
+    func changePersonality(to personality: CharacterEntityFactory.Personality) {
         guard personality != currentPersonality else { return }
         currentPersonality = personality
 
         guard let anchor = placedAnchor else { return }
 
+        // Stop the old face's blink loop right away rather than waiting
+        // for the new face to finish loading -- `addFace` below will
+        // swap the actual entity out (via `attachFace`, which itself
+        // stops animations on whatever it replaces) once it's ready.
         if let currentFace {
-            FaceEntityFactory.stopAnimations(for: currentFace)
+            CharacterEntityFactory.stopAnimations(for: currentFace)
         }
 
         Task { await addPersonalityFace(personality: personality, to: anchor, animated: true) }
@@ -278,31 +287,31 @@ class ScanViewModel: ObservableObject {
 
     /// Loads the face for `personality` and attaches it to `anchor`.
     /// When `animated` is true the face starts scaled to near-zero and
-    /// pops in via `FaceEntityFactory.popIn`, matching how the face is
-    /// introduced on initial placement.
+    /// pops in via `CharacterEntityFactory.popIn`, matching how the face
+    /// is introduced on initial placement.
     private func addNeutralFace(to anchor: AnchorEntity, animated: Bool) async {
         await addFace(personality: nil, to: anchor, animated: animated)
     }
 
-    private func addPersonalityFace(personality: FaceEntityFactory.Personality, to anchor: AnchorEntity, animated: Bool) async {
+    private func addPersonalityFace(personality: CharacterEntityFactory.Personality, to anchor: AnchorEntity, animated: Bool) async {
         await addFace(personality: personality, to: anchor, animated: animated)
     }
 
-    private func addFace(personality: FaceEntityFactory.Personality?, to anchor: AnchorEntity, animated: Bool) async {
+    private func addFace(personality: CharacterEntityFactory.Personality?, to anchor: AnchorEntity, animated: Bool) async {
         faceBuildGeneration += 1
         let generation = faceBuildGeneration
 
         do {
             let face: Entity
             if let personality {
-                face = try await FaceEntityFactory.makeFace(personality: personality)
+                face = try await CharacterEntityFactory.makeFace(personality: personality)
             } else {
-                face = try await FaceEntityFactory.makeBaseFace()
+                face = try await CharacterEntityFactory.makeBaseFace()
             }
             face.position = personality == .cautious ? [0, -0.05, 0] : .zero
             face.scale = animated ? SIMD3<Float>(repeating: 0.01) : SIMD3<Float>(repeating: 1)
             if animated, let personality {
-                FaceEntityFactory.prepareAccessoryForWearAnimation(on: face, personality: personality)
+                CharacterEntityFactory.prepareAccessoryForWearAnimation(on: face, personality: personality)
             }
 
             // Guard against the object having been removed (or a newer
@@ -313,38 +322,42 @@ class ScanViewModel: ObservableObject {
                   personality == nil || personality == currentPersonality
             else { return }
 
+            // Attach onto the single character entity for this anchor.
+            // `attachFace` replaces whatever face was there before (and
+            // stops its animations) without touching any bubble that
+            // happens to be mid fade-in/out alongside it.
             let character = characterEntity(for: anchor)
             CharacterEntityFactory.attachFace(face, to: character)
             currentFace = face
             currentFaceHasPersonalityAccessory = personality != nil
-            
-            FaceEntityFactory.setExpression(
+
+            CharacterEntityFactory.setExpression(
                 currentExpression,
                 on: face,
                 duration: 0
             )
 
             if animated {
-                FaceEntityFactory.popIn(face, duration: faceAnimationDuration)
+                CharacterEntityFactory.popIn(face, duration: faceAnimationDuration)
                 if let personality {
-                    FaceEntityFactory.wearAccessory(on: face, personality: personality)
+                    CharacterEntityFactory.wearAccessory(on: face, personality: personality)
                 }
             }
-            
-            FaceEntityFactory.startBlinking(on: face)
+
+            CharacterEntityFactory.startBlinking(on: face)
         } catch {
             let faceDescription = personality?.displayName ?? "neutral base face"
             print("Failed to build face for \(faceDescription): \(error)")
         }
     }
-    
-    func changeExpression(to expression: FaceEntityFactory.Expression) {
+
+    func changeExpression(to expression: CharacterEntityFactory.Expression) {
         let shouldAnimate = expression != currentExpression
         currentExpression = expression
 
         guard let face = currentFace else { return }
 
-        FaceEntityFactory.setExpression(
+        CharacterEntityFactory.setExpression(
             expression,
             on: face,
             duration: shouldAnimate ? 0.25 : 0
@@ -352,7 +365,7 @@ class ScanViewModel: ObservableObject {
     }
 
     private func addBubble(labeled label: String, to anchor: AnchorEntity, afterDelay delay: TimeInterval) {
-        let bubble = BubbleEntityFactory.makeTextBubble(text: label)
+        let bubble = CharacterEntityFactory.makeTextBubble(text: label)
         let finalPosition = bubbleFinalPosition()
         bubble.position = finalPosition - SIMD3<Float>(0, bubbleSlideOffset, 0)
         bubble.components.set(OpacityComponent(opacity: 0))
@@ -362,7 +375,7 @@ class ScanViewModel: ObservableObject {
 
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self, weak bubble] in
             guard let self, let bubble, bubble === self.currentBubble else { return }
-            BubbleEntityFactory.animateIn(bubble, to: finalPosition, duration: self.bubbleAnimationDuration)
+            CharacterEntityFactory.animateIn(bubble, to: finalPosition, duration: self.bubbleAnimationDuration)
         }
     }
 
@@ -373,7 +386,7 @@ class ScanViewModel: ObservableObject {
     private func replaceBubbleInstantly(labeled label: String, to anchor: AnchorEntity) {
         currentBubble?.removeFromParent()
 
-        let bubble = BubbleEntityFactory.makeTextBubble(text: label)
+        let bubble = CharacterEntityFactory.makeTextBubble(text: label)
         bubble.position = bubbleFinalPosition()
         bubble.components.set(OpacityComponent(opacity: 1))
         let character = characterEntity(for: anchor)
@@ -578,7 +591,7 @@ class ScanViewModel: ObservableObject {
             return
         }
 
-        BubbleEntityFactory.animateOut(
+        CharacterEntityFactory.animateOut(
             bubble,
             offset: SIMD3<Float>(0, bubbleSlideOffset, 0),
             duration: bubbleAnimationDuration
@@ -603,9 +616,13 @@ class ScanViewModel: ObservableObject {
         }
     }
 
-    /// Single AR child under the placement anchor that owns the whole visible
-    /// character. Face and bubble attach to this one billboarded root so they
-    /// rotate together instead of drifting apart as separate billboards.
+    /// The single AR child under the placement anchor that owns the whole
+    /// visible character -- face and bubble are both attached onto this
+    /// same entity (via `CharacterEntityFactory.attachFace`/
+    /// `attachBubble`) rather than existing as separate top-level
+    /// entities under the anchor. It's also the only place that carries a
+    /// `BillboardComponent`, so face and bubble always turn to face the
+    /// camera together, as one rigid unit.
     private func characterEntity(for anchor: AnchorEntity) -> Entity {
         if let currentCharacter,
            currentCharacter.parent === anchor {
