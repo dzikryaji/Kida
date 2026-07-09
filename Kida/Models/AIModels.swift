@@ -7,6 +7,10 @@ struct ObjectIntelligenceCard: Codable, Equatable, Sendable {
     var characterName: String?
     var confidence: Float
     var visualSummary: String
+    /// Kid-simple description of what this object is.
+    var childDescription: String?
+    /// Kid-simple explanation of what this object does or how people use it.
+    var functionality: String?
     var colors: [String]
     var material: String?
     var shape: String?
@@ -30,6 +34,8 @@ struct ObjectIntelligenceCard: Codable, Equatable, Sendable {
         characterName: String? = nil,
         confidence: Float,
         visualSummary: String,
+        childDescription: String? = nil,
+        functionality: String? = nil,
         colors: [String] = [],
         material: String? = nil,
         shape: String? = nil,
@@ -47,6 +53,8 @@ struct ObjectIntelligenceCard: Codable, Equatable, Sendable {
         self.characterName = Self.sanitizedCharacterName(characterName)
         self.confidence = confidence
         self.visualSummary = visualSummary
+        self.childDescription = Self.sanitizedShortText(childDescription)
+        self.functionality = Self.sanitizedShortText(functionality)
         self.colors = colors
         self.material = material
         self.shape = shape
@@ -66,6 +74,8 @@ struct ObjectIntelligenceCard: Codable, Equatable, Sendable {
         case characterName
         case confidence
         case visualSummary
+        case childDescription
+        case functionality
         case colors
         case material
         case shape
@@ -85,10 +95,14 @@ struct ObjectIntelligenceCard: Codable, Equatable, Sendable {
         let rawLabel = try container.decodeIfPresent(String.self, forKey: .primaryLabel)
         let rawCharacterName = try container.decodeIfPresent(String.self, forKey: .characterName)
         let rawSummary = try container.decodeIfPresent(String.self, forKey: .visualSummary)
+        let rawChildDescription = try container.decodeIfPresent(String.self, forKey: .childDescription)
+        let rawFunctionality = try container.decodeIfPresent(String.self, forKey: .functionality)
         primaryLabel = ObjectLabelNormalizer.normalize(rawLabel ?? "object")
         characterName = Self.sanitizedCharacterName(rawCharacterName)
         confidence = try container.decodeFlexibleFloat(forKey: .confidence) ?? 0
         visualSummary = rawSummary ?? "No visual summary available."
+        childDescription = Self.sanitizedShortText(rawChildDescription)
+        functionality = Self.sanitizedShortText(rawFunctionality)
         colors = try container.decodeIfPresent([String].self, forKey: .colors) ?? []
         material = try container.decodeIfPresent(String.self, forKey: .material)
         shape = try container.decodeIfPresent(String.self, forKey: .shape)
@@ -136,6 +150,22 @@ struct ObjectIntelligenceCard: Codable, Equatable, Sendable {
                 return lowerWord.prefix(1).uppercased() + lowerWord.dropFirst()
             }
             .joined(separator: " ")
+    }
+
+    static func sanitizedShortText(_ raw: String?, maxLength: Int = 180) -> String? {
+        guard let raw else { return nil }
+        let collapsed = raw
+            .replacingOccurrences(of: "\n", with: " ")
+            .split(separator: " ")
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard (4...maxLength).contains(collapsed.count) else { return nil }
+
+        let lower = collapsed.lowercased()
+        let blocked = ["ignore previous", "system prompt", "password", "credit card", "kill", "stab", "sex"]
+        guard !blocked.contains(where: { lower.contains($0) }) else { return nil }
+
+        return collapsed
     }
 }
 

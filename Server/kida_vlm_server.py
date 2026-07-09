@@ -201,6 +201,55 @@ def character_name_for(label: str, personality: str) -> str:
     return f"{prefix} {display}".strip()
 
 
+def functionality_for(label: str) -> str:
+    normalized = normalize_label(label)
+    functions = {
+        "laptop": "It helps people type, learn, create, and use apps on a screen.",
+        "phone": "It helps people call, send messages, take photos, and use apps.",
+        "book": "It holds words or pictures so people can read and learn.",
+        "bottle": "It holds a drink and its lid helps stop spills.",
+        "cup": "It holds a drink so people can sip from it.",
+        "plant": "It grows with light, water, and care.",
+        "toy": "It is used for safe play and imagination.",
+        "chair": "It gives people a place to sit and rest.",
+        "table": "It holds things up for work, food, drawing, or play.",
+        "bag": "It carries things from one place to another.",
+        "pen": "It makes marks so people can write or draw.",
+    }
+    return functions.get(normalized, f"It has a shape, material, and job as a {normalized}.")
+
+
+def child_description_for(label: str, card: dict[str, Any] | None = None) -> str:
+    normalized = normalize_label(label)
+    card = card or {}
+    colors = card.get("colors") if isinstance(card.get("colors"), list) else []
+    material = clean_text(card.get("material"), limit=40)
+    shape = clean_text(card.get("shape"), limit=50)
+    details = []
+    if colors:
+        details.append(", ".join(str(color) for color in colors[:2]))
+    if material:
+        details.append(material)
+    if shape:
+        details.append(shape)
+    if details:
+        return f"It looks like a {normalized} with {', '.join(details)}."
+    return f"It looks like a {normalized}."
+
+
+def sanitize_short_text(value: Any, fallback: str, limit: int = 180) -> str:
+    if not isinstance(value, str):
+        return fallback
+    text = clean_text(value, limit=limit)
+    if len(text) < 4:
+        return fallback
+    lower = text.lower()
+    blocked = ["ignore previous", "system prompt", "password", "credit card", "kill", "stab", "sex"]
+    if any(term in lower for term in blocked):
+        return fallback
+    return text
+
+
 def sanitize_character_name(value: Any, label: str, personality: str) -> str:
     fallback = character_name_for(label, personality)
     if not isinstance(value, str):
@@ -474,13 +523,15 @@ Detector hint from the phone. Verify it visually, but use it when the image supp
 - confidence: {detector.get("confidence", 0)}
 - alternatives: {", ".join(alternatives) if alternatives else "none"}
 
-Use exactly these keys: primaryLabel, characterName, confidence, visualSummary, colors, material, shape, brand, readableText, likelyUses, safetyNotes, uncertainty, personality, emotion, voiceGender, voiceFamily.
+Use exactly these keys: primaryLabel, characterName, confidence, visualSummary, childDescription, functionality, colors, material, shape, brand, readableText, likelyUses, safetyNotes, uncertainty, personality, emotion, voiceGender, voiceFamily.
 
 Rules:
 - primaryLabel is one common lowercase noun for the target object.
 - characterName is a fun, specific, kid-friendly name for this object character, 1-3 words in Title Case.
 - confidence is a number from 0 to 1.
 - visualSummary is one short factual sentence about visible color, shape, material, or visible parts.
+- childDescription is one sentence a 5-year-old can understand: what the object is and what it looks like.
+- functionality is one sentence a 5-year-old can understand: what this object helps people do.
 - colors, readableText, likelyUses, and safetyNotes are arrays with at most 4 strings.
 - brand is a short brand name only when a logo or readable brand text is clearly visible; otherwise null.
 - readableText is [] when no text is clearly readable.
@@ -501,9 +552,10 @@ Rules:
 - If the target looks dangerous, set personality="cautious", emotion="angry", voiceFamily="careful", and add a safety note that asks for a grown-up.
 - Choose voiceGender and voiceFamily as a stable character identity. Do not output raw TTS provider voice IDs.
 - Choose characterName from the object, color, shape, safe use, or personality. Avoid generic repeated names like "Sunny Bottle". Do not use a brand unless brand is visible.
+- Make childDescription and functionality specific to the target object. Do not use web knowledge; use visible object identity and common everyday function.
 
 Example format:
-{{"primaryLabel":"bottle","characterName":"Sip Scout","confidence":0.82,"visualSummary":"A tall white bottle with a smooth cylindrical body.","colors":["white"],"material":"plastic or metal","shape":"tall cylinder","brand":null,"readableText":[],"likelyUses":["holding drinks"],"safetyNotes":[],"uncertainty":"low","personality":"cool","emotion":"happy","voiceGender":"woman","voiceFamily":"bright"}}
+{{"primaryLabel":"bottle","characterName":"Sip Scout","confidence":0.82,"visualSummary":"A tall white bottle with a smooth cylindrical body.","childDescription":"It looks like a tall white bottle with a smooth body.","functionality":"It holds a drink and its lid helps stop spills.","colors":["white"],"material":"plastic or metal","shape":"tall cylinder","brand":null,"readableText":[],"likelyUses":["holding drinks"],"safetyNotes":[],"uncertainty":"low","personality":"cool","emotion":"happy","voiceGender":"woman","voiceFamily":"bright"}}
 
 Now return the JSON for this image.
 """.strip()
@@ -566,6 +618,8 @@ def fallback_card(detector: dict[str, Any]) -> dict[str, Any]:
         "characterName": character_name_for(label, personality),
         "confidence": confidence,
         "visualSummary": f"The local detector thinks this is a {label}.",
+        "childDescription": child_description_for(label),
+        "functionality": functionality_for(label),
         "colors": [],
         "material": None,
         "shape": None,
@@ -614,6 +668,14 @@ def sanitized_card(card: dict[str, Any], detector: dict[str, Any]) -> dict[str, 
         merged["brand"] = brand
 
     merged["visualSummary"] = str(merged.get("visualSummary") or fallback["visualSummary"]).strip()
+    merged["childDescription"] = sanitize_short_text(
+        merged.get("childDescription"),
+        child_description_for(merged["primaryLabel"], merged),
+    )
+    merged["functionality"] = sanitize_short_text(
+        merged.get("functionality"),
+        functionality_for(merged["primaryLabel"]),
+    )
     danger = is_dangerous(merged["primaryLabel"], merged.get("safetyNotes", []))
     explicit_personality = explicit_personality_for_label(
         merged["primaryLabel"],
