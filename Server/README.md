@@ -159,6 +159,8 @@ The command should print either:
   "readableText": [],
   "likelyUses": ["holding drinks"],
   "safetyNotes": ["do not drink unknown liquids"],
+  "riskLevel": "none",
+  "riskReason": null,
   "uncertainty": "low"
 }
 ```
@@ -178,6 +180,8 @@ or:
     "readableText": [],
     "likelyUses": ["holding drinks"],
     "safetyNotes": ["do not drink unknown liquids"],
+    "riskLevel": "none",
+    "riskReason": null,
     "uncertainty": "low"
   }
 }
@@ -219,6 +223,8 @@ Output:
     "readableText": [],
     "likelyUses": [],
     "safetyNotes": [],
+    "riskLevel": "none",
+    "riskReason": null,
     "uncertainty": "high"
   },
   "retrievedFacts": {
@@ -230,3 +236,8 @@ Output:
   "source": "heuristic"
 }
 ```
+
+`riskLevel` is `none`, `contextual`, or `high`. Only validated `high` risk
+forces the cautious personality and angry starting emotion. Contextual objects
+keep their normal character; their safety notes are used when the child asks a
+safety-related question.

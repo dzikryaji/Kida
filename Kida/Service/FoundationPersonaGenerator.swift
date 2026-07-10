@@ -29,11 +29,12 @@ final class FoundationPersonaGenerator: PersonaGenerating {
             return response
         }
 
-        if persona.personalityKind == .cautious,
-           Self.asksAboutCautiousObjectSafety(message) {
-            let response = Self.cautiousObjectSafetyResponse(for: persona, history: history)
-            AIDebugLogger.trace("Swift cautious object safety guardrail", message)
-            AIDebugLogger.json("Swift cautious object safety response", response)
+        let riskLevel = Self.resolvedRiskLevel(for: persona)
+        if riskLevel != .none,
+           Self.asksAboutObjectSafety(message) {
+            let response = Self.objectSafetyResponse(for: persona, riskLevel: riskLevel, history: history)
+            AIDebugLogger.trace("Swift contextual object safety guardrail", "risk=\(riskLevel.rawValue) message=\(message)")
+            AIDebugLogger.json("Swift contextual object safety response", response)
             return response
         }
 
@@ -79,12 +80,10 @@ final class FoundationPersonaGenerator: PersonaGenerating {
 
             return ChatResponse(
                 text: safeText,
-                emotion: persona.personalityKind == .cautious ? .angry : .happy,
-                voiceDirection: persona.personalityKind == .cautious
-                    ? "firm, careful, protective"
-                    : "\(persona.voiceFamily.rawValue), simple, grounded",
-                rate: persona.personalityKind == .cautious ? 0.38 : 0.42,
-                pitch: persona.personalityKind == .cautious ? 0.98 : 1.08,
+                emotion: .happy,
+                voiceDirection: "\(persona.voiceFamily.rawValue), simple, grounded",
+                rate: 0.42,
+                pitch: 1.08,
                 volume: 1.0,
                 mouthAnimationMode: .talkingLoop,
                 grounded: true,
@@ -190,6 +189,12 @@ final class FoundationPersonaGenerator: PersonaGenerating {
             if !card.safetyNotes.isEmpty {
                 lines.append("Safety notes: \(card.safetyNotes.joined(separator: "; "))")
             }
+            if let riskLevel = card.riskLevel {
+                lines.append("Object risk: \(riskLevel.rawValue)")
+            }
+            if let riskReason = card.riskReason, !riskReason.isEmpty {
+                lines.append("Risk reason: \(riskReason)")
+            }
             if let personality = card.personality {
                 lines.append("Scan personality choice: \(personality.rawValue)")
             }
@@ -211,20 +216,20 @@ final class FoundationPersonaGenerator: PersonaGenerating {
     private static func scanLockedPersona(for detectedObject: DetectedObject) -> ObjectPersona {
         let card = detectedObject.objectIntelligence
         let label = ObjectLabelNormalizer.normalize(card?.primaryLabel ?? detectedObject.label)
-        let safetyNotes = card?.safetyNotes ?? []
-        let isDangerous = PersonalityMapper.isDangerous(label: label, safetyNotes: safetyNotes)
+        let riskLevel = card?.resolvedRiskLevel
+            ?? PersonalityMapper.resolvedRiskLevel(suggested: nil, label: label)
         let kind = PersonalityMapper.resolve(
             suggested: card?.personality,
             label: label,
-            safetyNotes: safetyNotes
+            riskLevel: riskLevel
         )
-        let shouldUseSafetyPersona = isDangerous || kind == .cautious
-        let emotion = faceSupportedEmotion(shouldUseSafetyPersona ? .angry : (card?.emotion ?? kind.defaultEmotion))
+        let isHighRisk = riskLevel == .high
+        let emotion = faceSupportedEmotion(isHighRisk ? .angry : (card?.emotion ?? kind.defaultEmotion))
         let voiceGender = scanVoiceGender(suggested: card?.voiceGender, kind: kind, label: label)
-        let voiceFamily = shouldUseSafetyPersona ? .careful : (card?.voiceFamily ?? kind.defaultVoiceFamily)
+        let voiceFamily = isHighRisk ? .careful : (card?.voiceFamily ?? kind.defaultVoiceFamily)
         let facts = scanFacts(card: card, label: label, kind: kind)
         let name = scanName(suggested: card?.characterName, label: label, kind: kind)
-        let greeting = scanGreeting(name: name, label: label, kind: kind, isDangerous: shouldUseSafetyPersona)
+        let greeting = scanGreeting(name: name, label: label, kind: kind, riskLevel: riskLevel)
 
         return ObjectPersona(
             name: name,
@@ -240,6 +245,11 @@ final class FoundationPersonaGenerator: PersonaGenerating {
             visualContext: plainObjectNotes(for: detectedObject),
             objectIntelligence: card
         )
+    }
+
+    private static func resolvedRiskLevel(for persona: ObjectPersona) -> ObjectRiskLevel {
+        persona.objectIntelligence?.resolvedRiskLevel
+            ?? PersonalityMapper.resolvedRiskLevel(suggested: nil, label: persona.objectLabel)
     }
 
     private static func scanVoiceGender(
@@ -350,9 +360,9 @@ final class FoundationPersonaGenerator: PersonaGenerating {
         name: String,
         label: String,
         kind: PersonalityKind,
-        isDangerous: Bool
+        riskLevel: ObjectRiskLevel
     ) -> String {
-        if isDangerous || kind == .cautious {
+        if riskLevel == .high {
             return "Hi, I'm \(name). Please let a grown-up handle me safely."
         }
 
@@ -366,7 +376,7 @@ final class FoundationPersonaGenerator: PersonaGenerating {
         case .caregiver:
             return "Hi, I'm \(name). I'm here with cozy, kind object facts."
         case .cautious:
-            return "Hi, I'm \(name). Please let a grown-up handle me safely."
+            return "Hi, I'm \(name). I notice little safety clues while we explore."
         }
     }
 
@@ -445,8 +455,9 @@ final class FoundationPersonaGenerator: PersonaGenerating {
     /// Builds the grounding block AFM must answer from: the real ObjectIntelligenceCard
     /// plus retrieved kid-safe facts. This is the "richer card in -> smarter pal out" lever.
     private static func groundingBlock(for persona: ObjectPersona) -> String {
+        let riskLevel = resolvedRiskLevel(for: persona)
         var lines: [String] = [
-            "Locked: name=\(persona.name); object=\(persona.objectLabel); personality=\(persona.personalityKind.rawValue); voice=\(persona.voiceGender.rawValue)/\(persona.voiceFamily.rawValue); startEmotion=\(faceSupportedEmotion(persona.emotionStyle).rawValue)",
+            "Locked: name=\(persona.name); object=\(persona.objectLabel); personality=\(persona.personalityKind.rawValue); voice=\(persona.voiceGender.rawValue)/\(persona.voiceFamily.rawValue); startEmotion=\(faceSupportedEmotion(persona.emotionStyle).rawValue); risk=\(riskLevel.rawValue)",
         ]
         if let card = persona.objectIntelligence {
             lines.append("Card:")
@@ -470,6 +481,9 @@ final class FoundationPersonaGenerator: PersonaGenerating {
             if !uses.isEmpty { lines.append("- used for: \(uses.prefix(2).joined(separator: ", "))") }
             let safety = card.safetyNotes.filter(isSafeSnippet)
             if !safety.isEmpty { lines.append("- safety: \(safety.prefix(2).map { compact($0, maxCharacters: 80) }.joined(separator: "; "))") }
+            if let riskReason = card.riskReason, !riskReason.isEmpty, isSafeSnippet(riskReason) {
+                lines.append("- risk reason: \(compact(riskReason, maxCharacters: 90))")
+            }
         }
         if let facts = persona.retrievedFacts {
             lines.append("Facts:")
@@ -671,7 +685,7 @@ final class FoundationPersonaGenerator: PersonaGenerating {
         return nil
     }
 
-    private static func asksAboutCautiousObjectSafety(_ message: String) -> Bool {
+    private static func asksAboutObjectSafety(_ message: String) -> Bool {
         let lower = message.lowercased()
         let phrases = [
             "are you dangerous", "are you safe", "is it dangerous", "is it safe",
@@ -683,23 +697,34 @@ final class FoundationPersonaGenerator: PersonaGenerating {
         return phrases.contains { lower.contains($0) }
     }
 
-    private static func cautiousObjectSafetyResponse(
+    private static func objectSafetyResponse(
         for persona: ObjectPersona,
+        riskLevel: ObjectRiskLevel,
         history: [ChatMessage]
     ) -> ChatResponse {
-        let fact = cautiousSafetyFact(for: persona)
-        let risk = cautiousRiskPhrase(for: persona)
-        let variants = [
-            "Yes, \(risk). Please let a grown-up handle me safely.",
-            "Safety mode on: \(risk). Ask a grown-up before touching me.",
-            "I can be unsafe for kid hands. Please put me down and ask a grown-up."
-        ]
+        let fact = objectSafetyFact(for: persona, riskLevel: riskLevel)
+        let risk = objectRiskPhrase(for: persona, riskLevel: riskLevel)
+        let isHighRisk = riskLevel == .high
+        let variants: [String]
+        if isHighRisk {
+            variants = [
+                "Yes, \(risk). Please let a grown-up handle me safely.",
+                "Safety mode on: \(risk). Ask a grown-up before touching me.",
+                "I can seriously hurt kid hands. Please put me down and ask a grown-up."
+            ]
+        } else {
+            variants = [
+                "I'm usually okay for my normal job, but \(risk). Careful hands, please!",
+                "No need to worry, but \(risk). Use me carefully and ask a grown-up if unsure.",
+                "I'm an everyday object, but \(risk). A little care keeps things safe."
+            ]
+        }
         return ChatResponse(
             text: limitedWords(leastRecentlyUsedVariant(variants, history: history), maxWords: 24),
-            emotion: .angry,
-            voiceDirection: "firm, careful, protective",
-            rate: 0.38,
-            pitch: 0.98,
+            emotion: isHighRisk ? .angry : .happy,
+            voiceDirection: isHighRisk ? "firm, careful, protective" : "calm, careful, friendly",
+            rate: isHighRisk ? 0.38 : 0.40,
+            pitch: isHighRisk ? 0.98 : 1.03,
             volume: 1.0,
             mouthAnimationMode: .talkingLoop,
             grounded: true,
@@ -707,14 +732,19 @@ final class FoundationPersonaGenerator: PersonaGenerating {
         )
     }
 
-    private static func cautiousSafetyFact(for persona: ObjectPersona) -> String {
+    private static func objectSafetyFact(for persona: ObjectPersona, riskLevel: ObjectRiskLevel) -> String {
+        if let reason = persona.objectIntelligence?.riskReason,
+           !reason.isEmpty,
+           isSafeSnippet(reason) {
+            return "risk: \(reason)"
+        }
         if let note = persona.objectIntelligence?.safetyNotes.first(where: isSafeSnippet) {
             return "safety: \(note)"
         }
-        return "safety: \(persona.objectLabel) is in the cautious object bucket"
+        return "object risk: \(riskLevel.rawValue)"
     }
 
-    private static func cautiousRiskPhrase(for persona: ObjectPersona) -> String {
+    private static func objectRiskPhrase(for persona: ObjectPersona, riskLevel: ObjectRiskLevel) -> String {
         let text = [
             persona.objectLabel,
             persona.objectIntelligence?.shape ?? "",
@@ -729,16 +759,27 @@ final class FoundationPersonaGenerator: PersonaGenerating {
         if text.contains("knife") || text.contains("blade") || text.contains("scissor") || text.contains("sharp") {
             return "I can be sharp"
         }
-        if text.contains("hot") || text.contains("stove") || text.contains("kettle") || text.contains("fire") {
-            return "I can be hot"
+        if text.contains("hot") || text.contains("stove") || text.contains("kettle") || text.contains("fire")
+            || text.contains("pan") || text.contains("pot") || text.contains("toaster") || text.contains("iron") {
+            return riskLevel == .high ? "I can be hot" : "some uses can get hot"
         }
-        if text.contains("electric") || text.contains("outlet") || text.contains("plug") || text.contains("battery") {
+        if text.contains("battery") {
+            return "batteries need careful hands and stay out of mouths"
+        }
+        if text.contains("cable") || text.contains("cord") || text.contains("wire") {
+            return "cords and wires need gentle handling"
+        }
+        if text.contains("electric") || text.contains("outlet") || text.contains("plug") {
             return "electric things need grown-up help"
         }
         if text.contains("medicine") || text.contains("chemical") || text.contains("cleaner") {
             return "I need grown-up supervision"
         }
-        return "I need careful grown-up handling"
+        if text.contains("tool") || text.contains("hammer") || text.contains("screwdriver")
+            || text.contains("drill") || text.contains("nail") {
+            return "tools need careful hands"
+        }
+        return riskLevel == .high ? "I need careful grown-up handling" : "some uses need extra care"
     }
 
     private static func notSureDeflection(for persona: ObjectPersona) -> ChatResponse {
@@ -909,7 +950,9 @@ final class FoundationPersonaGenerator: PersonaGenerating {
         Decide the meaning from the child question. Answer from Object facts and Recent chat.
         Call searchObjectFacts only if those facts are missing the needed answer; never for material/colors/shape/brand/text/use already shown.
         Return the Swift schema. Text under 24 words. Be playful and warm, with one tiny harmless flourish.
-        Keep the locked character. Emotions only: happy, sad, angry. Dangerous/unsafe topics must be firm and angry.
+        Keep the locked character. Emotions only: happy, sad, angry.
+        Use angry only when the child's request or the answer is actually about danger or unsafe behavior.
+        Ordinary questions about a high-risk or cautious object can still be friendly and happy.
         Do not invent facts. If facts are missing after one tool call, say you are not sure and ask a grown-up.
         """
 
@@ -964,10 +1007,6 @@ final class FoundationPersonaGenerator: PersonaGenerating {
 
         response.text = safeText
         response.emotion = Self.faceSupportedEmotion(response.emotion)
-        if persona.personalityKind == .cautious {
-            response.emotion = .angry
-            response.voiceDirection = "firm, careful, protective"
-        }
         response.mouthAnimationMode = .talkingLoop
         response.usedFacts = response.usedFacts?.filter(Self.isSafeSnippet) ?? []
 

@@ -75,7 +75,7 @@ enum PersonalityKind: String, Codable, CaseIterable, Sendable {
         case .cool: return .happy
         case .fancy: return .happy
         case .caregiver: return .happy
-        case .cautious: return .angry
+        case .cautious: return .happy
         }
     }
 
@@ -92,22 +92,23 @@ enum PersonalityKind: String, Codable, CaseIterable, Sendable {
     }
 }
 
-/// Assigns a personality from the object, and enforces the safety override.
+/// Assigns a personality from the object while keeping object risk separate.
 enum PersonalityMapper {
-    /// Final personality for an object. `suggested` is the VLM/Gemini pick (nil if none).
-    /// SAFETY FIRST: a dangerous object is always `.cautious`, whatever the VLM said.
+    /// Final personality for an object. Only validated high risk hard-overrides the
+    /// VLM/Gemini choice; contextual objects keep their normal character.
     static func resolve(
         suggested: PersonalityKind?,
         label: String,
-        safetyNotes: [String] = []
+        riskLevel: ObjectRiskLevel
     ) -> PersonalityKind {
-        if isDangerous(label: label, safetyNotes: safetyNotes) { return .cautious }
+        if riskLevel == .high { return .cautious }
         if let mapped = explicitMapFromLabel(label) { return mapped }
         return suggested ?? .cool
     }
 
     /// Keyword fallback when the VLM didn't classify (deterministic, per the design doc).
     static func mapFromLabel(_ label: String) -> PersonalityKind {
+        if resolvedRiskLevel(suggested: nil, label: label) == .high { return .cautious }
         if let mapped = explicitMapFromLabel(label) { return mapped }
         return .cool   // friendly, low-stakes default
     }
@@ -123,12 +124,40 @@ enum PersonalityMapper {
         return nil
     }
 
-    /// Danger drives both `.cautious` and the kid-safety guardrail. Over-triggering is the
-    /// SAFE failure mode (an over-careful teddy is harmless; a careless knife is not), so the
-    /// list is deliberately broad and the VLM's own safetyNotes are also consulted.
-    static func isDangerous(label: String, safetyNotes: [String] = []) -> Bool {
-        let text = (label + " " + safetyNotes.joined(separator: " ")).lowercased()
-        return contains(text, dangerWords)
+    /// Resolve the VLM's structured risk suggestion against a conservative local policy.
+    /// Generic safety notes are intentionally excluded: advice is not hazard evidence.
+    static func resolvedRiskLevel(
+        suggested: ObjectRiskLevel?,
+        label: String,
+        evidence: [String] = []
+    ) -> ObjectRiskLevel {
+        let labelText = label.lowercased()
+        let evidenceText = evidence.joined(separator: " ").lowercased()
+        let hasActiveHazard = contains(evidenceText, activeHighRiskEvidence)
+
+        if contains(labelText, highRiskWords) {
+            let canDowngrade = contains(labelText, downgradableHighRiskWords)
+                && contains(labelText, lowRiskQualifiers)
+                && !hasActiveHazard
+            return canDowngrade ? .contextual : .high
+        }
+
+        if suggested == .high, hasActiveHazard {
+            return .high
+        }
+
+        if contains(labelText, contextualRiskWords) || suggested == .contextual || suggested == .high {
+            return .contextual
+        }
+        return .none
+    }
+
+    static func isHighRisk(
+        label: String,
+        suggested: ObjectRiskLevel? = nil,
+        evidence: [String] = []
+    ) -> Bool {
+        resolvedRiskLevel(suggested: suggested, label: label, evidence: evidence) == .high
     }
 
     private static func contains(_ text: String, _ terms: [String]) -> Bool {
@@ -153,16 +182,29 @@ enum PersonalityMapper {
         return variants
     }
 
-    static let dangerWords = [
-        "knife", "scissor", "blade", "razor", "stove", "oven", "heater", "outlet",
-        "socket", "plug", "cord", "battery", "lighter", "match", "candle", "flame",
-        "medicine", "pill", "syringe", "needle", "chemical", "cleaner", "bleach", "sharp",
-        "fork", "forks", "tine", "tines", "pointy", "adult supervision",
-        "not safe for children", "not safe", "supervision", "grown up", "grown-up",
-        "hot", "boiling", "kettle", "pan", "pot", "toaster", "microwave", "iron",
-        "fire", "burn", "saw", "drill", "hammer", "screwdriver", "nail", "tool",
-        "shard", "broken glass", "glass shard", "wire", "cable", "electric", "electrical",
-        "detergent", "poison", "toxic", "spray", "aerosol",
+    static let highRiskWords = [
+        "knife", "scissor", "blade", "razor", "stove", "oven", "outlet", "socket",
+        "lighter", "medicine", "pill", "syringe", "needle", "chemical cleaner", "bleach",
+        "poison", "toxic chemical", "firearm", "gun", "weapon", "saw", "power drill",
+        "broken glass", "glass shard", "shard",
+    ]
+    static let contextualRiskWords = [
+        "fork", "tine", "prong", "kettle", "pan", "pot", "toaster", "microwave",
+        "iron", "heater", "candle", "match", "drill", "hammer", "screwdriver", "nail",
+        "tool", "plug", "cord", "battery", "wire", "cable", "electric", "electrical",
+        "detergent", "cleaner", "spray", "aerosol",
+    ]
+    static let activeHighRiskEvidence = [
+        "visible flame", "open flame", "lit candle", "is burning", "currently burning",
+        "boiling", "steaming", "glowing hot", "exposed wire", "exposed wiring",
+        "sparking", "leaking chemical", "spilled chemical", "broken into shards",
+    ]
+    static let downgradableHighRiskWords = [
+        "knife", "scissor", "gun", "weapon", "saw", "power drill",
+    ]
+    static let lowRiskQualifiers = [
+        "toy", "pretend", "costume prop", "display prop", "child safe", "child-safe",
+        "safety scissor", "butter knife", "training knife",
     ]
     static let coolWords = [
         "ball", "skateboard", "sneaker", "shoe", "headphone", "earbud", "sunglass",
@@ -177,7 +219,7 @@ enum PersonalityMapper {
     static let fancyWords = [
         "perfume", "wine", "champagne", "vase", "frame", "jewel", "ring", "necklace",
         "crystal", "trophy", "medal", "bow tie", "watch", "photo", "glassware",
-        "tableware", "decorative",
+        "tableware", "decorative", "fork", "spoon", "plate", "cutlery", "utensil",
     ]
     static let bossWords = [
         "money", "cash", "wallet", "credit card", "coin", "safe", "piggy", "remote",
@@ -188,19 +230,36 @@ enum PersonalityMapper {
     #if DEBUG
     /// ponytail: one runnable check for the mapper. Call from a test or SwiftUI preview.
     static func _selfCheck() {
-        assert(resolve(suggested: .caregiver, label: "medicine bottle") == .cautious, "danger must override")
-        assert(resolve(suggested: nil, label: "kitchen knife") == .cautious)
-        assert(resolve(suggested: .cool, label: "fork", safetyNotes: ["Use only with adult supervision"]) == .cautious)
-        assert(resolve(suggested: .fancy, label: "hot kettle") == .cautious)
-        assert(resolve(suggested: .cool, label: "electric drill") == .cautious)
-        assert(resolve(suggested: nil, label: "skateboard") == .cool)
-        assert(resolve(suggested: nil, label: "teddy bear") == .caregiver)
-        assert(resolve(suggested: nil, label: "wine glass") == .fancy)
-        assert(resolve(suggested: nil, label: "wallet") == .boss)
-        assert(resolve(suggested: .cool, label: "laptop") == .boss, "strong taxonomy beats lazy VLM")
-        assert(resolve(suggested: .boss, label: "banana") == .boss, "VLM pick honored when safe")
+        assert(resolve(suggested: .caregiver, label: "medicine bottle", riskLevel: .high) == .cautious, "high risk must override")
+        assert(resolve(suggested: nil, label: "kitchen knife", riskLevel: .high) == .cautious)
+        assert(resolvedRiskLevel(suggested: nil, label: "fork") == .contextual)
+        assert(resolve(suggested: .fancy, label: "fork", riskLevel: .contextual) == .fancy)
+        assert(resolvedRiskLevel(suggested: nil, label: "charging cable") == .contextual)
+        assert(resolve(suggested: .fancy, label: "cable organizer", riskLevel: .contextual) == .fancy)
+        assert(resolvedRiskLevel(suggested: .high, label: "candle", evidence: ["A visible flame is burning."]) == .high)
+        assert(resolvedRiskLevel(suggested: .high, label: "candle", evidence: ["Candles can burn things."]) == .contextual)
+        assert(resolvedRiskLevel(suggested: .high, label: "toy gun") == .contextual)
+        assert(resolvedRiskLevel(suggested: nil, label: "safety scissors") == .contextual)
+        assert(resolve(suggested: nil, label: "skateboard", riskLevel: .none) == .cool)
+        assert(resolve(suggested: nil, label: "teddy bear", riskLevel: .none) == .caregiver)
+        assert(resolve(suggested: nil, label: "wine glass", riskLevel: .none) == .fancy)
+        assert(resolve(suggested: nil, label: "wallet", riskLevel: .none) == .boss)
+        assert(resolve(suggested: .cool, label: "laptop", riskLevel: .none) == .boss, "strong taxonomy beats lazy VLM")
+        assert(resolve(suggested: .boss, label: "banana", riskLevel: .none) == .boss, "VLM pick honored when safe")
     }
     #endif
+}
+
+extension ObjectIntelligenceCard {
+    var resolvedRiskLevel: ObjectRiskLevel {
+        PersonalityMapper.resolvedRiskLevel(
+            suggested: riskLevel,
+            label: primaryLabel,
+            evidence: [riskReason, visualSummary, childDescription, shape]
+                .compactMap { $0 }
+                .filter { !$0.isEmpty }
+        )
+    }
 }
 
 // MARK: - Bridge to the AR layer (friend's FaceEntityFactory)

@@ -345,6 +345,8 @@ struct GeminiVisualUnderstandingProvider: VisualUnderstandingProviding {
           "readableText": ["short visible words or letters"],
           "likelyUses": ["safe everyday use"],
           "safetyNotes": ["child-safety caveat if relevant"],
+          "riskLevel": "one of: none, contextual, high",
+          "riskReason": "one short object-specific reason or null",
           "uncertainty": "low, medium, or high",
           "personality": "one of: boss, cool, fancy, caregiver, cautious",
           "emotion": "one of: happy, sad, angry",
@@ -364,9 +366,15 @@ struct GeminiVisualUnderstandingProvider: VisualUnderstandingProviding {
         - cool: fun, sport, play, style, trend, activity, or entertainment; examples: ball, skateboard, sneakers, headphones, sunglasses, bicycle, controller, guitar
         - fancy: formal, elegant, decorative, special-occasion, or treated carefully because it is nice; examples: fancy glassware, watch, perfume bottle, framed photo, trophy, vase, fancy tableware
         - caregiver: comfort, softness, care, affection, or nurturing; examples: pillow, blanket, stuffed toy, plush, teapot, baby bottle, tissue box, flower
-        - cautious: physically dangerous or adult-supervision objects; examples: fork, scissors, knife, stove, hot kettle, electrical outlet, medicine bottle, lighter, chemical cleaner, drill, broken glass
+        - cautious: inherently hazardous objects that need grown-up handling; examples: knife, scissors, medicine bottle, chemical cleaner, lighter, exposed outlet, power saw, broken glass
         Choose emotion as the friendly mood that suits the object, using only happy, sad, or angry.
-        If the object looks sharp, pointy, hot, burnable, electrical, medicine-like, chemical, tool-like, broken/shard-like, or says it needs adult supervision, set personality to cautious, emotion to angry, voiceFamily to careful, and add a safety note to ask a grown-up.
+        Classify object risk separately:
+        - none: ordinary object with no special concern in normal use
+        - contextual: generally ordinary, but a particular use or state needs care; examples: fork, cable, battery, pan, pot, unlit candle, ordinary hand tool
+        - high: inherently hazardous or a clearly visible active hazard; examples: knife, razor, medicine, chemical cleaner, lighter, broken glass, visible flame, boiling liquid, exposed sparking wire
+        A generic precaution or hypothetical possibility is not high risk. A cup that could hold a hot drink is contextual at most.
+        Only high risk forces personality to cautious, emotion to angry, voiceFamily to careful, and a grown-up safety note.
+        For contextual risk, choose the object's normal personality and a friendly emotion.
         Choose voiceGender and voiceFamily as a stable character identity. Do not output raw TTS provider voice IDs.
         Keep arrays short: at most 4 items each.
         """

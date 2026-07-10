@@ -697,9 +697,13 @@ class ScanViewModel: ObservableObject {
 
         let resolvedPersonality = resolvedPersona.personalityKind.faceKind
         let resolvedExpression = resolvedPersona.emotionStyle.faceExpression
+        let resolvedRiskLevel = resolvedPersona.objectIntelligence?.resolvedRiskLevel
+            ?? PersonalityMapper.resolvedRiskLevel(suggested: nil, label: resolvedPersona.objectLabel)
 
         AIDebugLogger.trace("VLM visual persona update", """
         personality=\(resolvedPersona.personalityKind.rawValue)
+        riskLevel=\(resolvedRiskLevel.rawValue)
+        riskReason=\(resolvedPersona.objectIntelligence?.riskReason ?? "none")
         emotion=\(resolvedPersona.emotionStyle.rawValue)
         faceExpression=\(resolvedExpression.displayName)
         """)
