@@ -1,6 +1,12 @@
 import Foundation
 import UIKit
 
+enum ObjectRiskLevel: String, Codable, CaseIterable, Sendable {
+    case none
+    case contextual
+    case high
+}
+
 struct ObjectIntelligenceCard: Codable, Equatable, Sendable {
     var primaryLabel: String
     /// VLM-suggested short character name for this scanned object.
@@ -19,6 +25,10 @@ struct ObjectIntelligenceCard: Codable, Equatable, Sendable {
     var readableText: [String]
     var likelyUses: [String]
     var safetyNotes: [String]
+    /// Object-level risk is separate from conversational safety. Only `.high`
+    /// may hard-lock the initial cautious/angry character treatment.
+    var riskLevel: ObjectRiskLevel?
+    var riskReason: String?
     var uncertainty: String?
     /// VLM-suggested personality bucket. Code may override to `.cautious` for danger.
     var personality: PersonalityKind?
@@ -43,6 +53,8 @@ struct ObjectIntelligenceCard: Codable, Equatable, Sendable {
         readableText: [String] = [],
         likelyUses: [String] = [],
         safetyNotes: [String] = [],
+        riskLevel: ObjectRiskLevel? = nil,
+        riskReason: String? = nil,
         uncertainty: String? = nil,
         personality: PersonalityKind? = nil,
         emotion: Emotion? = nil,
@@ -62,6 +74,8 @@ struct ObjectIntelligenceCard: Codable, Equatable, Sendable {
         self.readableText = readableText
         self.likelyUses = likelyUses
         self.safetyNotes = safetyNotes
+        self.riskLevel = riskLevel
+        self.riskReason = Self.sanitizedShortText(riskReason, maxLength: 140)
         self.uncertainty = uncertainty
         self.personality = personality
         self.emotion = emotion
@@ -83,6 +97,8 @@ struct ObjectIntelligenceCard: Codable, Equatable, Sendable {
         case readableText
         case likelyUses
         case safetyNotes
+        case riskLevel
+        case riskReason
         case uncertainty
         case personality
         case emotion
@@ -110,6 +126,8 @@ struct ObjectIntelligenceCard: Codable, Equatable, Sendable {
         readableText = try container.decodeIfPresent([String].self, forKey: .readableText) ?? []
         likelyUses = try container.decodeIfPresent([String].self, forKey: .likelyUses) ?? []
         safetyNotes = try container.decodeIfPresent([String].self, forKey: .safetyNotes) ?? []
+        riskLevel = try? container.decodeIfPresent(ObjectRiskLevel.self, forKey: .riskLevel)
+        riskReason = Self.sanitizedShortText(try container.decodeIfPresent(String.self, forKey: .riskReason), maxLength: 140)
         let rawUncertainty = try container.decodeIfPresent(String.self, forKey: .uncertainty)
         // Corrupt/degenerate-card guard: if the identifying fields were missing the
         // payload was likely truncated or empty — never let it read as confident.

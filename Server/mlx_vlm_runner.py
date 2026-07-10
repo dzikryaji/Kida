@@ -187,10 +187,17 @@ def extract_partial_card(text: str) -> dict[str, Any] | None:
         "colors",
         "material",
         "shape",
+        "brand",
         "readableText",
         "likelyUses",
         "safetyNotes",
+        "riskLevel",
+        "riskReason",
         "uncertainty",
+        "personality",
+        "emotion",
+        "voiceGender",
+        "voiceFamily",
     ]
     card: dict[str, Any] = {}
     for key in keys:
@@ -254,10 +261,17 @@ def summarize_text_output(text: str) -> dict[str, Any]:
             "colors": [],
             "material": None,
             "shape": None,
+            "brand": None,
             "readableText": [],
             "likelyUses": [],
             "safetyNotes": [],
+            "riskLevel": "none",
+            "riskReason": None,
             "uncertainty": "medium" if label != "object" else "high",
+            "personality": None,
+            "emotion": None,
+            "voiceGender": None,
+            "voiceFamily": None,
         },
         text,
     )
@@ -289,10 +303,17 @@ def sanitize_card(card: dict[str, Any], raw_text: str) -> dict[str, Any]:
         "colors": clean_list(card.get("colors")),
         "material": clean_optional(card.get("material")),
         "shape": clean_optional(card.get("shape")),
+        "brand": clean_optional(card.get("brand")),
         "readableText": clean_list(card.get("readableText") or card.get("readable_text")),
         "likelyUses": clean_list(card.get("likelyUses") or card.get("likely_uses")),
         "safetyNotes": clean_list(card.get("safetyNotes") or card.get("safety_notes")),
+        "riskLevel": clean_optional(card.get("riskLevel") or card.get("risk_level")),
+        "riskReason": clean_optional(card.get("riskReason") or card.get("risk_reason")),
         "uncertainty": clean_optional(card.get("uncertainty")) or "medium",
+        "personality": clean_optional(card.get("personality")),
+        "emotion": clean_optional(card.get("emotion")),
+        "voiceGender": clean_optional(card.get("voiceGender") or card.get("voice_gender")),
+        "voiceFamily": clean_optional(card.get("voiceFamily") or card.get("voice_family")),
     }
 
 

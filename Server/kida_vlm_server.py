@@ -72,6 +72,7 @@ PERSONALITIES = {"boss", "cool", "fancy", "caregiver", "cautious"}
 EMOTIONS = {"happy", "sad", "angry"}
 VOICE_GENDERS = {"man", "woman"}
 VOICE_FAMILIES = {"bright", "gentle", "confident", "careful"}
+RISK_LEVELS = {"none", "contextual", "high"}
 TAVILY_ENDPOINT = "https://api.tavily.com/search"
 TAVILY_TIMEOUT = float(os.environ.get("KIDA_TAVILY_TIMEOUT", "8"))
 TAVILY_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
@@ -97,16 +98,32 @@ def tavily_ssl_context() -> ssl.SSLContext | None:
 TAVILY_SSL_CONTEXT = tavily_ssl_context()
 TAVILY_CACHE_TTL = float(os.environ.get("KIDA_TAVILY_CACHE_TTL", "86400"))
 
-DANGER_WORDS = [
-    "knife", "scissor", "blade", "razor", "stove", "oven", "heater", "outlet",
-    "socket", "plug", "cord", "battery", "lighter", "match", "candle", "flame",
-    "medicine", "pill", "syringe", "needle", "chemical", "cleaner", "bleach", "sharp",
-    "fork", "tine", "prong", "pointy", "adult supervision", "not safe for children",
-    "not safe", "supervision", "grown up", "grown-up",
-    "hot", "boiling", "kettle", "pan", "pot", "toaster", "microwave", "iron",
-    "fire", "burn", "saw", "drill", "hammer", "screwdriver", "nail", "tool",
-    "shard", "broken glass", "glass shard", "wire", "cable", "electric", "electrical",
-    "detergent", "poison", "toxic", "spray", "aerosol",
+# These are inherently hazardous object identities. Ambiguous words such as
+# "hot", "wire", "battery", "tool", and "pan" belong in the contextual tier;
+# a generic precaution must never turn an ordinary object into an angry persona.
+HIGH_RISK_WORDS = [
+    "knife", "scissor", "blade", "razor", "stove", "oven", "outlet", "socket",
+    "lighter", "medicine", "pill", "syringe", "needle", "chemical cleaner", "bleach",
+    "poison", "toxic chemical", "firearm", "gun", "weapon", "saw", "power drill",
+    "broken glass", "glass shard", "shard",
+]
+CONTEXTUAL_RISK_WORDS = [
+    "fork", "tine", "prong", "kettle", "pan", "pot", "toaster", "microwave",
+    "iron", "heater", "candle", "match", "drill", "hammer", "screwdriver", "nail",
+    "tool", "plug", "cord", "battery", "wire", "cable", "electric", "electrical",
+    "detergent", "cleaner", "spray", "aerosol",
+]
+# A contextual object may be promoted only when the VLM describes a visible,
+# active hazard. Hypothetical phrases such as "could be hot" are not enough.
+ACTIVE_HIGH_RISK_EVIDENCE = [
+    "visible flame", "open flame", "lit candle", "is burning", "currently burning",
+    "boiling", "steaming", "glowing hot", "exposed wire", "exposed wiring",
+    "sparking", "leaking chemical", "spilled chemical", "broken into shards",
+]
+DOWNGRADABLE_HIGH_RISK_WORDS = ["knife", "scissor", "gun", "weapon", "saw", "power drill"]
+LOW_RISK_QUALIFIERS = [
+    "toy", "pretend", "costume prop", "display prop", "child safe", "child-safe",
+    "safety scissor", "butter knife", "training knife",
 ]
 COOL_WORDS = [
     "ball", "skateboard", "sneaker", "shoe", "headphone", "earbud", "sunglass",
@@ -121,7 +138,7 @@ SWEET_WORDS = [
 FANCY_WORDS = [
     "perfume", "wine", "champagne", "vase", "frame", "jewel", "ring", "necklace",
     "crystal", "trophy", "medal", "bow tie", "watch", "photo", "glassware",
-    "tableware", "decorative",
+    "tableware", "decorative", "fork", "spoon", "plate", "cutlery", "utensil",
 ]
 BOSS_WORDS = [
     "money", "cash", "wallet", "credit card", "coin", "safe", "piggy", "remote",
@@ -211,14 +228,42 @@ def contains_any(text: str, words: list[str]) -> bool:
     return False
 
 
+def risk_level_for(
+    label: str,
+    suggested: str | None = None,
+    evidence: list[str] | None = None,
+) -> str:
+    """Resolve object risk without treating generic safety advice as danger evidence."""
+    label_text = (label or "object").lower()
+    suggested_level = sanitize_choice(suggested, RISK_LEVELS, "none")
+    evidence_text = " ".join(evidence or []).lower()
+    has_active_hazard = contains_any(evidence_text, ACTIVE_HIGH_RISK_EVIDENCE)
+
+    if contains_any(label_text, HIGH_RISK_WORDS):
+        can_downgrade = (
+            contains_any(label_text, DOWNGRADABLE_HIGH_RISK_WORDS)
+            and contains_any(label_text, LOW_RISK_QUALIFIERS)
+            and not has_active_hazard
+        )
+        return "contextual" if can_downgrade else "high"
+
+    if suggested_level == "high" and has_active_hazard:
+        return "high"
+
+    if contains_any(label_text, CONTEXTUAL_RISK_WORDS) or suggested_level in {"contextual", "high"}:
+        return "contextual"
+    return "none"
+
+
 def is_dangerous(label: str, safety_notes: list[str] | None = None) -> bool:
-    text = f"{label} {' '.join(safety_notes or [])}".lower()
-    return contains_any(text, DANGER_WORDS)
+    """Backward-compatible name for the hard override: only high risk is dangerous."""
+    del safety_notes  # Safety prose informs answers, never the personality classifier.
+    return risk_level_for(label) == "high"
 
 
 def explicit_personality_for_label(label: str, safety_notes: list[str] | None = None) -> str | None:
     text = label.lower()
-    if is_dangerous(label, safety_notes):
+    if is_dangerous(label):
         return "cautious"
     if contains_any(text, BOSS_WORDS):
         return "boss"
@@ -232,14 +277,17 @@ def explicit_personality_for_label(label: str, safety_notes: list[str] | None = 
 
 
 def map_personality(label: str, safety_notes: list[str] | None = None) -> str:
-    explicit = explicit_personality_for_label(label, safety_notes)
+    del safety_notes
+    explicit = explicit_personality_for_label(label)
     if explicit:
         return explicit
     return "cool"
 
 
 def default_emotion(personality: str) -> str:
-    return "angry" if personality == "cautious" else "happy"
+    # Personality and conversational emotion are independent. High-risk policy
+    # applies the angry starting emotion explicitly after classification.
+    return "happy"
 
 
 def voice_family_for_personality(personality: str) -> str:
@@ -250,6 +298,15 @@ def voice_family_for_personality(personality: str) -> str:
         "caregiver": "gentle",
         "cautious": "careful",
     }.get(personality, "bright")
+
+
+def default_risk_reason(label: str, risk_level: str) -> str | None:
+    display = normalize_label(label)
+    if risk_level == "high":
+        return f"A {display} can seriously hurt a child and needs grown-up handling."
+    if risk_level == "contextual":
+        return f"A {display} is usually ordinary but some uses need extra care."
+    return None
 
 
 def character_name_for(label: str, personality: str) -> str:
@@ -749,7 +806,7 @@ Detector hint from the phone. Verify it visually, but use it when the image supp
 - confidence: {detector.get("confidence", 0)}
 - alternatives: {", ".join(alternatives) if alternatives else "none"}
 
-Use exactly these keys: primaryLabel, characterName, confidence, visualSummary, childDescription, functionality, colors, material, shape, brand, readableText, likelyUses, safetyNotes, uncertainty, personality, emotion, voiceGender, voiceFamily.
+Use exactly these keys: primaryLabel, characterName, confidence, visualSummary, childDescription, functionality, colors, material, shape, brand, readableText, likelyUses, safetyNotes, riskLevel, riskReason, uncertainty, personality, emotion, voiceGender, voiceFamily.
 
 Rules:
 - primaryLabel is one common lowercase noun for the target object.
@@ -759,6 +816,8 @@ Rules:
 - childDescription is one sentence a 5-year-old can understand: what the object is and what it looks like.
 - functionality is one sentence a 5-year-old can understand: what this object helps people do.
 - colors, readableText, likelyUses, and safetyNotes are arrays with at most 4 strings.
+- riskLevel is exactly one of: none, contextual, high.
+- riskReason is one short object-specific reason, or null when riskLevel="none".
 - brand is a short brand name only when a logo or readable brand text is clearly visible; otherwise null.
 - readableText is [] when no text is clearly readable.
 - material and shape may be null when not visible.
@@ -774,14 +833,20 @@ Rules:
   cool = fun, sport, play, style, trend, activity, or entertainment; examples: ball, skateboard, sneakers, headphones, sunglasses, bicycle, controller, guitar.
   fancy = formal, elegant, decorative, special-occasion, or treated carefully because it is nice; examples: fancy glassware, watch, perfume bottle, framed photo, trophy, vase, fancy tableware.
   caregiver = comfort, softness, care, affection, or nurturing; examples: pillow, blanket, stuffed toy, plush, teapot, baby bottle, tissue box, flower.
-  cautious = physically dangerous or adult-supervision objects; examples: fork, scissors, knife, stove, hot kettle, electrical outlet, medicine bottle, lighter, chemical cleaner, drill, broken glass.
-- If the target looks sharp, pointy, hot, burnable, electrical, medicine-like, chemical, tool-like, broken/shard-like, or needs adult supervision, set personality="cautious", emotion="angry", voiceFamily="careful", and add a safety note that asks for a grown-up.
+  cautious = inherently hazardous objects that need grown-up handling; examples: knife, scissors, medicine bottle, chemical cleaner, lighter, exposed outlet, power saw, broken glass.
+- Classify risk separately from personality:
+  none = an ordinary object with no special concern in normal use.
+  contextual = generally ordinary, but a particular use or state needs care; examples: fork, cable, battery, pan, pot, unlit candle, or ordinary hand tool.
+  high = inherently hazardous, or a clearly visible active hazard; examples: knife, razor, medicine, chemical cleaner, lighter, broken glass, visible flame, boiling liquid, exposed sparking wire.
+- A generic precaution or hypothetical possibility is not high risk. "A cup could hold a hot drink" is contextual at most; an ordinary cable or battery is contextual, not high.
+- Only high risk forces personality="cautious", emotion="angry", voiceFamily="careful", with a grown-up safety note.
+- For contextual risk, choose the object's normal personality and a friendly emotion. Add a brief safety note only when useful.
 - Choose voiceGender and voiceFamily as a stable character identity. Do not output raw TTS provider voice IDs.
 - Choose characterName from the object, color, shape, safe use, or personality. Avoid generic repeated names like "Sunny Bottle" or "Sip Scout". Do not use a different object word in the name, such as calling a fork a toaster. Do not copy the example name. Do not use a brand unless brand is visible.
 - Make childDescription and functionality specific to the target object. Do not use web knowledge; use visible object identity and common everyday function.
 
 Example format only, do not copy the values:
-{{"primaryLabel":"book","characterName":"Page Pal","confidence":0.82,"visualSummary":"A small book with a light cover.","childDescription":"It looks like a little book with pages inside.","functionality":"It helps people read stories or information.","colors":["white"],"material":"paper","shape":"rectangle","brand":null,"readableText":[],"likelyUses":["reading"],"safetyNotes":[],"uncertainty":"low","personality":"caregiver","emotion":"happy","voiceGender":"woman","voiceFamily":"gentle"}}
+{{"primaryLabel":"book","characterName":"Page Pal","confidence":0.82,"visualSummary":"A small book with a light cover.","childDescription":"It looks like a little book with pages inside.","functionality":"It helps people read stories or information.","colors":["white"],"material":"paper","shape":"rectangle","brand":null,"readableText":[],"likelyUses":["reading"],"safetyNotes":[],"riskLevel":"none","riskReason":null,"uncertainty":"low","personality":"caregiver","emotion":"happy","voiceGender":"woman","voiceFamily":"gentle"}}
 
 Now return the JSON for this image.
 """.strip()
@@ -837,8 +902,9 @@ def run_fastvlm(image_bytes: bytes, detector: dict[str, Any], timeout: float) ->
 def fallback_card(detector: dict[str, Any]) -> dict[str, Any]:
     label = normalize_label(detector.get("label", "object"))
     confidence = float(detector.get("confidence") or 0)
+    risk_level = risk_level_for(label)
     personality = map_personality(label)
-    dangerous = personality == "cautious"
+    high_risk = risk_level == "high"
     return {
         "primaryLabel": label,
         "characterName": character_name_for(label, personality),
@@ -852,10 +918,12 @@ def fallback_card(detector: dict[str, Any]) -> dict[str, Any]:
         "brand": None,
         "readableText": [],
         "likelyUses": [],
-        "safetyNotes": ["Ask a grown-up before touching or using this."] if dangerous else [],
+        "safetyNotes": ["Ask a grown-up before touching or using this."] if high_risk else [],
+        "riskLevel": risk_level,
+        "riskReason": default_risk_reason(label, risk_level),
         "uncertainty": "high" if confidence < 0.45 else "medium",
         "personality": personality,
-        "emotion": default_emotion(personality),
+        "emotion": "angry" if high_risk else default_emotion(personality),
         "voiceGender": stable_voice_gender(label),
         "voiceFamily": voice_family_for_personality(personality),
     }
@@ -864,7 +932,8 @@ def fallback_card(detector: dict[str, Any]) -> dict[str, Any]:
 def sanitized_card(card: dict[str, Any], detector: dict[str, Any]) -> dict[str, Any]:
     fallback = fallback_card(detector)
     merged = {**fallback, **(card or {})}
-    merged["primaryLabel"] = normalize_label(str(merged.get("primaryLabel") or fallback["primaryLabel"]))
+    raw_primary_label = str(merged.get("primaryLabel") or fallback["primaryLabel"])
+    merged["primaryLabel"] = normalize_label(raw_primary_label)
     try:
         merged["confidence"] = float(merged.get("confidence", fallback["confidence"]))
     except (TypeError, ValueError):
@@ -902,12 +971,29 @@ def sanitized_card(card: dict[str, Any], detector: dict[str, Any]) -> dict[str, 
         merged.get("functionality"),
         functionality_for(merged["primaryLabel"]),
     )
-    danger = is_dangerous(merged["primaryLabel"], merged.get("safetyNotes", []))
-    explicit_personality = explicit_personality_for_label(
-        merged["primaryLabel"],
-        merged.get("safetyNotes", []),
+    risk_reason = clean_text(merged.get("riskReason"), limit=140) or None
+    evidence = [
+        risk_reason or "",
+        merged.get("visualSummary") or "",
+        merged.get("childDescription") or "",
+        merged.get("shape") or "",
+    ]
+    risk_level = risk_level_for(
+        f"{raw_primary_label} {merged['primaryLabel']}",
+        suggested=merged.get("riskLevel"),
+        evidence=evidence,
     )
-    personality_fallback = map_personality(merged["primaryLabel"], merged.get("safetyNotes", []))
+    merged["riskLevel"] = risk_level
+    merged["riskReason"] = (
+        (risk_reason or default_risk_reason(merged["primaryLabel"], risk_level))
+        if risk_level != "none"
+        else None
+    )
+    danger = risk_level == "high"
+    explicit_personality = explicit_personality_for_label(
+        f"{raw_primary_label} {merged['primaryLabel']}",
+    )
+    personality_fallback = map_personality(merged["primaryLabel"])
     merged["personality"] = sanitize_choice(
         merged.get("personality"),
         PERSONALITIES,
@@ -917,6 +1003,8 @@ def sanitized_card(card: dict[str, Any], detector: dict[str, Any]) -> dict[str, 
         merged["personality"] = explicit_personality
     if danger:
         merged["personality"] = "cautious"
+        if not merged["safetyNotes"]:
+            merged["safetyNotes"] = ["Please let a grown-up handle this object safely."]
 
     emotion_fallback = default_emotion(merged["personality"])
     merged["emotion"] = sanitize_choice(merged.get("emotion"), EMOTIONS, emotion_fallback)
