@@ -10,11 +10,11 @@ We are a team of 5
 **Coder:**
 - Aji
 - Imelda
-- Richard
+- Andrian
 
 
 **Designer:**
-- Andrian
+- Richard
 - Erin
 
 ---
